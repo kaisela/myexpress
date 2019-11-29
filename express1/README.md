@@ -37,8 +37,9 @@ express1
 ```
 
 ## 执行流程
+图片地址
 
-
+https://user-gold-cdn.xitu.io/2019/11/29/16eb5be0c486c681?w=1618&h=694&f=png&s=117279
 ![](https://user-gold-cdn.xitu.io/2019/11/29/16eb5be0c486c681?w=1618&h=694&f=png&s=117279)
 
 test/index.js 主要是集成mocha + chai + supertest 自动发送examples/index.js中注册的get请求。
@@ -193,7 +194,9 @@ describe('服务器测试', () => {
 ```
 
 test测试结果如下：
+图片地址
 
+https://user-gold-cdn.xitu.io/2019/11/29/16eb5f350d6cb502?w=1098&h=510&f=png&s=53188
 ![](https://user-gold-cdn.xitu.io/2019/11/29/16eb5f350d6cb502?w=1098&h=510&f=png&s=53188)
 
 ## 下期预告
