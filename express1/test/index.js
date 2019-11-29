@@ -1,24 +1,32 @@
 'use strict'
-/* function add(x, y) {
-  return x + y
-} */
+
 const assert = require('chai').assert
-/* describe('加法函数测试', function addTest() {
-  it('1 加 1 等于 2', () => {
-    assert.equal(add(1, 1), 2)
-  })
-}) */
-const app = require('../index.js')()
+
+const app = require('../examples/index.js')
 const request = require('supertest')(app)
 describe('服务器测试', () => {
-  it('GET info', () => {
+  it('GET /', (done) => {
     request
       .get('/')
       .expect(200)
       .end((err, res) => {
+        console.log(res.text)
         if (err) 
           return done(err)
-        assert.equal(res.text, 'Response From Server', 'res is wrong')
+        assert.equal(res.text, 'root', 'res is wrong')
+        done()
+      })
+  })
+
+  it('GET /path', (done) => {
+    request
+      .get('/path')
+      .expect(200)
+      .end((err, res) => {
+        console.log(res.text)
+        if (err) 
+          return done(err)
+        assert.equal(res.text, 'path', 'res is wrong')
         done()
       })
   })

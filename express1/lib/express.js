@@ -1,16 +1,15 @@
-const http = require('http')
 const mixin = require('merge-descriptors')
-module.exports = function createServer() {
-  const app = function (req, res) {
-    res.end('Response From Server')
+let proto = require('./application')
+
+exports = module.exports = createApplication
+
+function createApplication() {
+  let app = function (req, res, next) {
+    console.log('handle')
+    app.handle(req, res, next)
   }
   mixin(app, proto, false)
+
+  app.init()
   return app
-}
-const proto = Object.create(null)
-proto.listen = function (prot) {
-  const server = http.createServer(this)
-  return server
-    .listen
-    .apply(server, arguments)
 }
