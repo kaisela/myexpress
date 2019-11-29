@@ -12,23 +12,23 @@ let app = exports = module.exports = {}
       cb  请求对应的回调函数
  * }
  */
-app.init = function init() {
+app._init = function init() {
   this.setting = {}
   this.paths = []
-  this.defaultConfiguration()
+  this._defaultConfiguration()
 }
 /**
  * 设置环境变量env，后期迭代预留
  */
-app.defaultConfiguration = function defaultConfiguration() {
+app._defaultConfiguration = function defaultConfiguration() {
   let env = process.env.NODE_ENV || 'development'
-  this.set('env', env)
-  this.set('jsonp callback name', 'callback')
+  this._set('env', env)
+  this._set('jsonp callback name', 'callback')
 }
 /**
  * 对app中setting对象的操作，为后期迭代预留
  */
-app.set = function set(key, val) {
+app._set = function set(key, val) {
   if (arguments.length === 1) {
     this.setting[key]
   }
@@ -46,7 +46,7 @@ app.handle = function handle(req, res) {
   }
 }
 /**
- * 启动http负我
+ * 启动http服务
  */
 app.listen = function listen() {
   let server = http.createServer(this)
