@@ -10,6 +10,6 @@ function createApplication() {
     app.handle(req, res, next)
   }
   mixin(app, proto, false)
-  app._init()
+  app.init()
   return app
 }
