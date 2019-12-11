@@ -17,7 +17,7 @@ function Layer(path, options, fn) {
   this.handle = fn
   this.params = undefined
   this.path = undefined
-  this.regexp = pathRegexp(path, this.kays = [], opts) // path: /user/:id ,keys:[{name: id, , prefix: '/', ...}]
+  this.regexp = pathRegexp(path, this.keys = [], opts) // path: /user/:id ,keys:[{name: id, , prefix: '/', ...}]
 }
 
 Layer.prototype.handle_request = function handle(req, res, next) {
@@ -52,8 +52,7 @@ Layer.prototype.match = function match(path) {
   if (this.keys) {
     let keys = this.keys
     let params = this.params
-    // 代码测试时补上注释
-    for (let i = 1; i < macth.length; i++) {
+    for (let i = 1; i < match.length; i++) {
       let key = keys[i - 1]
       let prop = key.name
       let val = decode_param(match[i])

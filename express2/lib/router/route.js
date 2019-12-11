@@ -31,14 +31,14 @@ methods.forEach((method) => {
 
     for (let i = 0; i < handles.length; i++) {
       let handle = handles[i]
-      if (typeof handle !== 'function') {
+      if (typeof handle !== 'function') { // 如果handle不是function，则对外抛出异常
         let msg = `Route.${method}() requires a callback function but not a ${type}`
         throw new Error(msg)
       }
 
       debug('%s %o', method, this.path)
 
-      let layer = new Layer('/', {}, handle)
+      let layer = new Layer('/', {}, handle) // 注册method和handle的关系
       layer.method = method
 
       this.methods[method] = true
@@ -53,11 +53,11 @@ methods.forEach((method) => {
 /**
  * 遍历stack数组，并处理函数
  */
-Route.prototype.dispatch = function dispatch(err, req, res, done) {
+Route.prototype.dispatch = function dispatch(req, res, done) {
   let idx = 0
   let stack = this.stack
   if (stack.length === 0) {
-    return done() // 函数出来完成之后，将执行入口交给母函数管理
+    return done() // 函数出来完成之后，将执行入口交给母函数管理，此处的done为router handle中的next
   }
 
   let method = req
@@ -66,12 +66,11 @@ Route.prototype.dispatch = function dispatch(err, req, res, done) {
   req.route = this
   next()
   function next() {
-    console.log(idx)
     let layer = stack[idx++]
-    if (!layer) {
+    if (!layer) { // 当循环完成，调回router handle中的next
       return done()
     }
-    if (layer.method && layer.method !== method) {
+    if (layer.method && layer.method !== method) { // 不符合要求，继续调用next进行遍历
       return next()
     }
 

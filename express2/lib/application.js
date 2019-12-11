@@ -39,7 +39,8 @@ app.set = function set(key, val) {
   this.setting[key] = val
 }
 /**
- * http.createServer 中的回调函数最终执行，遍历paths，确定调用哪个get函数中的回调函数
+ * http.createServer 中的回调函数最终执行
+ * 调用的是_router.handle 对url进行精确定位和匹配
  */
 app.handle = function handle(req, res) {
   let router = this._router
@@ -82,7 +83,7 @@ app.listen = function listen() {
 } */
 
 /**
- * 对路由实现装载
+ * 对路由实现装载，实例化
  */
 app.lazyrouter = function () {
   if (!this._router) {
@@ -91,7 +92,7 @@ app.lazyrouter = function () {
 }
 
 /**
- * 实现post，get等http。methods 对应的方法
+ * 实现post，get等http.METHODS 对应的方法
  */
 
 methods.forEach((method) => {
@@ -103,7 +104,7 @@ methods.forEach((method) => {
     this.lazyrouter()
     let route = this
       ._router
-      .route(path)
-    route[method].apply(route, slice.call(arguments, 1))
+      .route(path) // 调用_router的route方法，对path和route注册
+    route[method].apply(route, slice.call(arguments, 1)) // 调用route的method方法，对method和callbacks注册
   }
 })

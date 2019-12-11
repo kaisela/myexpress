@@ -49,29 +49,25 @@ proto.handle = function handle(req, res, out) {
   let stack = self.stack
   let url = req.url
   let done = out
-  next()
+  next() //第一次调用next
   function next(err) {
     let layerError = err === 'route'
       ? null
       : err
-    if (layerError === 'router') {
+    if (layerError === 'router') { //如果错误存在，再当前任务结束前调用最终处理函数
       setImmediate(done, null)
       return
     }
 
-    if (idx >= stack.length) {
+    if (idx >= stack.length) { // 遍历完成之后调用最终处理函数
       setImmediate(done, layerError)
       return
-    }
-
-    if (!url) {
-      return done(layerError)
     }
 
     let layer
     let match
     let route
-    while (match !== true && idx < stack.length) {
+    while (match !== true && idx < stack.length) { //从数组中找到匹配的路由
       layer = stack[idx++]
       match = matchLayer(layer, url)
       route = layer.route
@@ -82,10 +78,10 @@ proto.handle = function handle(req, res, out) {
       if (match !== true) {
         continue
       }
-      /* if (layerError) {
+      if (layerError) {
         match = false
         continue
-      } */
+      }
       let method = req.method
       let has_method = route._handles_method(method)
       if (!has_method) {
@@ -93,20 +89,11 @@ proto.handle = function handle(req, res, out) {
         continue
       }
     }
-    if (match !== true) {
+    if (match !== true) { // 循环完成没有匹配的路由，调用最终处理函数
       return done(layerError)
     }
-    layer.handle_request(req, res, next)
-
-    /* let layer = stack[idx++]
-    if (layer) {
-      let match = matchLayer(layer, url)
-      if (match && idx < stack.length) {
-        layer.handle_request(req, res, next)
-      } else if (idx === stack.length) {
-        layer.handle_request(req, res, finalHandle)
-      }
-    } */
+    res.params = Object.assign({}, layer.params) // 将解析的‘/get/:id’ 中的id剥离出来
+    layer.handle_request(req, res, next) //调用route的dispatch方法，dispatch完成之后在此调用next，进行下一次循环
 
   }
 }
