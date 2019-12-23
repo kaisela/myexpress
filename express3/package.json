@@ -20,6 +20,9 @@
     "merge-descriptors": "^1.0.1",
     "mocha": "^6.2.2",
     "path-to-regexp": "^6.1.0",
-    "supertest": "^4.0.2"
+    "qs": "^6.9.1",
+    "querystring": "^0.2.0",
+    "supertest": "^4.0.2",
+    "utils-merge": "^1.0.1"
   }
 }

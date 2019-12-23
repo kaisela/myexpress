@@ -65,16 +65,19 @@ Route.prototype.dispatch = function dispatch(req, res, done) {
     .toLowerCase()
   req.route = this
   next()
-  function next() {
+  function next(err) {
     let layer = stack[idx++]
     if (!layer) { // 当循环完成，调回router handle中的next
-      return done()
+      return done(err)
     }
     if (layer.method && layer.method !== method) { // 不符合要求，继续调用next进行遍历
-      return next()
+      return next(err)
     }
-
-    layer.handle_request(req, res, next)
+    if (err) {
+      layer.handle_error(err, req, res, next)
+    } else {
+      layer.handle_request(req, res, next)
+    }
   }
 
 }

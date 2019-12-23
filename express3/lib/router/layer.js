@@ -25,14 +25,17 @@ Layer.prototype.handle_request = function handle(req, res, next) {
   fn(req, res, next)
 }
 
-/* Layer.prototype.handle_error = function handle_error(err, req, res, next) {
+Layer.prototype.handle_error = function handle_error(err, req, res, next) {
   let fn = this.handle
+  if (fn.length !== 4) {
+    return next(err)
+  }
   try {
     fn(err, req, res, next)
   } catch (err) {
     next(err)
   }
-} */
+}
 Layer.prototype.match = function match(path) {
   let match
   if (path) {

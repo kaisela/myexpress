@@ -8,6 +8,13 @@ let methods = http.METHODS // 获取http的所有请求方式
 const slice = Array.prototype.slice;
 const Router = require('./router')
 const finalhandler = require('finalhandler') // http request 最后的函数处理,主要包括错误处理 https://www.npmjs.com/package/finalhandler
+
+const trustProxyDefaultSymbol = '@@symbol:trust_proxy_default'
+
+const compileQueryParser = require('./utils').compileQueryParser
+
+const query = require('./middleware/query')
+
 /**
  * 初始化app对象需要的一些基础设置
  * paths: 存放所有使用get方法注册的请求，单体对象的格式为:
@@ -28,6 +35,7 @@ app.defaultConfiguration = function defaultConfiguration() {
   let env = process.env.NODE_ENV || 'development'
   this.set('env', env)
   this.set('jsonp callback name', 'callback')
+  this.set('query parser', 'extended')
 }
 /**
  * 对app中setting对象的操作，为后期迭代预留
@@ -37,6 +45,12 @@ app.set = function set(key, val) {
     return this.setting[key]
   }
   this.setting[key] = val
+  switch (key) {
+    case 'query parser':
+      this.set('query parser fn', compileQueryParser(val));
+      break
+  }
+  return this
 }
 /**
  * http.createServer 中的回调函数最终执行
@@ -69,18 +83,6 @@ app.listen = function listen() {
     .listen
     .apply(server, arguments)
 }
-/**
- * 实现app的get接口，主要是对所有的get请求进行注册，方便handle中实现精准回调
- */
-/* app.get = function get(path, cb) {
-  let pathObj = {
-    pathURL: path,
-    cb: cb
-  }
-  this
-    .paths
-    .push(pathObj)
-} */
 
 /**
  * 对路由实现装载，实例化
@@ -89,6 +91,9 @@ app.lazyrouter = function () {
   if (!this._router) {
     this._router = new Router()
   }
+  this
+    ._router
+    .use(query(this.get('query parser fn')))
 }
 
 /**
@@ -108,3 +113,18 @@ methods.forEach((method) => {
     route[method].apply(route, slice.call(arguments, 1)) // 调用route的method方法，对method和callbacks注册
   }
 })
+
+app.param = function param(name, fn) {
+  this.lazyrouter()
+
+  if (Array.isArray(name)) {
+    for (let i = 0; i < name.length; i++) {
+      this.param(name[i], fn)
+    }
+    return this
+  }
+  this
+    ._router
+    .param(name, fn)
+  return this
+}
