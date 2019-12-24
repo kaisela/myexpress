@@ -12,7 +12,7 @@ const finalhandler = require('finalhandler') // http request 最后的函数处�
 const trustProxyDefaultSymbol = '@@symbol:trust_proxy_default'
 
 const compileQueryParser = require('./utils').compileQueryParser
-
+// 3:新增 req.query 中间件的处理
 const query = require('./middleware/query')
 
 /**
@@ -35,6 +35,7 @@ app.defaultConfiguration = function defaultConfiguration() {
   let env = process.env.NODE_ENV || 'development'
   this.set('env', env)
   this.set('jsonp callback name', 'callback')
+  // 3:新增 设置query中间件的默认调用函数
   this.set('query parser', 'extended')
 }
 /**
@@ -45,6 +46,7 @@ app.set = function set(key, val) {
     return this.setting[key]
   }
   this.setting[key] = val
+  // 3:新增 设置query中间件中query处理的默认调用函数
   switch (key) {
     case 'query parser':
       this.set('query parser fn', compileQueryParser(val));
@@ -114,9 +116,14 @@ methods.forEach((method) => {
   }
 })
 
+/**
+ * 3:新增 实现app的param接口
+ * @param {*} name 参数名称 可以是数组 或者 字符串
+ * @param {*} fn 需要处理的中间件
+ */
 app.param = function param(name, fn) {
   this.lazyrouter()
-
+  // 如果name是数组时，分割调用自身
   if (Array.isArray(name)) {
     for (let i = 0; i < name.length; i++) {
       this.param(name[i], fn)

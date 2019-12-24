@@ -7,6 +7,7 @@ let methods = require('http').METHODS
 const parseUrl = require('parseurl')
 const mixin = require('merge-descriptors')
 
+// 3:新增，用于获取对象类型
 const objectRegExp = /^\[object (\S+)\]$/
 const slice = Array.prototype.slice
 const toString = Object.prototype.toString
@@ -69,6 +70,8 @@ proto.handle = function handle(req, res, out) {
       setImmediate(done, layerError)
       return
     }
+
+    // 3: 新增path ，用于获取除query之外的path
     let path = getPathname(req)
     if (!path) {
       return done(layerError)
@@ -87,6 +90,7 @@ proto.handle = function handle(req, res, out) {
       if (match !== true) {
         continue
       }
+      // 3:新增，原逻辑中不可能存在route没有的情况，在3中加入query中间件，其route为undefined
       if (!route) {
         continue
       }
@@ -105,14 +109,16 @@ proto.handle = function handle(req, res, out) {
       return done(layerError)
     }
     req.params = Object.assign({}, layer.params) // 将解析的‘/get/:id’ 中的id剥离出来
+    // 3:新增，主要是处理app.param
     self.process_params(layer, paramcalled, req, res, function (err) {
       if (err) {
         return next(layerError || err)
       }
       if (route) {
-        return layer.handle_request(req, res, next) //调用route的dispatch方法，dispatch完成之后在此调用next，进行下一次循环
+        //调用route的dispatch方法，dispatch完成之后在此调用next，进行下一次循环
+        return layer.handle_request(req, res, next)
       }
-
+      // 3:新增，加入handle_error处理
       trim_prefix(layer, layerError, '', path)
     })
   }
@@ -133,7 +139,7 @@ proto.handle = function handle(req, res, out) {
 }
 
 /**
- * 获取除query部分的路径 例如： /get?id=12 --> /get
+ * 3:新增 获取除query部分的路径 例如： /get?id=12 --> /get
  */
 
 function getPathname(req) {
@@ -154,8 +160,9 @@ function matchLayer(layer, path) {
     return err;
   }
 }
-
-//对传过来的参数进行拦截，将参数拦截相关存入到params中，在handle中进行分解执行
+/**
+ * 3:新增 对传过来的参数进行拦截，将参数拦截相关存入到params中，在handle中进行分解执行
+ */
 proto.param = function param(name, fn) {
   if (typeof name === 'function') {
     this
@@ -176,6 +183,14 @@ proto.param = function param(name, fn) {
   }
   (this.params[name] = this.params[name] || []).push(fn)
 }
+/**
+ * 3:新增 遍历params，匹配到合适的param，执行拦截
+ * @param {*} layer 当前layer
+ * @param {*} called 已经执行过的param
+ * @param {*} req
+ * @param {*} res
+ * @param {*} done
+ */
 proto.process_params = function process_params(layer, called, req, res, done) {
   let params = this.params
   let keys = layer.keys
@@ -189,11 +204,15 @@ proto.process_params = function process_params(layer, called, req, res, done) {
   if (keys.length === 0) {
     return done()
   }
-
+  /**
+   * 3:新增 遍历当前url所对应的param，存于layer.keys中
+   * @param {} err
+   */
   function param(err) {
     if (err) {
       return done(err)
     }
+    // 临界值判断，跳出循环
     if (keysIndex >= keys.length) {
       return done()
     }
@@ -215,19 +234,24 @@ proto.process_params = function process_params(layer, called, req, res, done) {
     called[name] = paramCalled = {
       value: paramVal
     }
-
     paramCallback()
   }
 
+  /**
+   * 3:新增 遍历当前param-->key 对应的functions --> callbacks
+   * @param {} err
+   */
   function paramCallback(err) {
     let fn = paramcallbacks[paramcbIndex++]
     if (err) {
       return param(err)
     }
+    // 临界值，跳出循环
     if (!fn) {
       return param(err)
     }
     try {
+      // 执行中间件
       fn(req, res, paramCallback, paramVal, name)
     } catch (e) {
       paramCallback(e)
@@ -236,9 +260,14 @@ proto.process_params = function process_params(layer, called, req, res, done) {
   param()
 }
 
+/**
+ * 3:新增 主要用于注册路由相关的中间件，此迭代中，在注册query中间件中使用到
+ * @param {*} fn
+ */
 proto.use = function use(fn) {
   let path = '/'
   let offset = 0
+  // 为app.use 接口准备，第一个参数可能时路径的正则表达式
   if (typeof fn !== 'function') {
     let arg = fn
     while (Array.isArray(arg) && arg.length != 0) {
@@ -255,6 +284,7 @@ proto.use = function use(fn) {
     throw new TypeError('Router.use() requires a middleware function')
   }
 
+  // 将中间件加入到stack栈中，方便handle函数遍历中执行
   for (let i = 0; i < callbacks.length; i++) {
     let fn = callbacks[i]
     if (typeof fn !== 'function') {
@@ -271,6 +301,10 @@ proto.use = function use(fn) {
   }
 }
 
+/**
+ * 3: 新增 获取对象的类型
+ * @param {} obj
+ */
 function gettype(obj) {
   let type = typeof obj
 

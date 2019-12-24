@@ -1,6 +1,12 @@
+/**
+ * 3:新增工具类文件
+ */
 const qs = require('qs')
 const querystring = require('querystring')
-
+/**
+ *3:新增 根据val值 返回处理query中间件 转换query时需要的函数
+ * @param {*} val
+ */
 exports.compileQueryParser = function compileQueryParser(val) {
   let fn
   if (typeof val === 'function') {

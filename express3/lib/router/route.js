@@ -73,6 +73,8 @@ Route.prototype.dispatch = function dispatch(req, res, done) {
     if (layer.method && layer.method !== method) { // 不符合要求，继续调用next进行遍历
       return next(err)
     }
+
+    // 3:新增 加入错误处理
     if (err) {
       layer.handle_error(err, req, res, next)
     } else {

@@ -25,6 +25,13 @@ Layer.prototype.handle_request = function handle(req, res, next) {
   fn(req, res, next)
 }
 
+/**
+ * 3:新增 加入handle_error的处理
+ * @param {*} err 错误信息
+ * @param {*} req
+ * @param {*} res
+ * @param {*} next
+ */
 Layer.prototype.handle_error = function handle_error(err, req, res, next) {
   let fn = this.handle
   if (fn.length !== 4) {

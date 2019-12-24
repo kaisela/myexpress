@@ -1,6 +1,6 @@
 'use strict'
 /**
- * 处理req.url query部分的中间件
+ * 3:新增 处理req.url query部分的中间件
  */
 let merge = require('utils-merge')
 let parseUrl = require('parseurl')
