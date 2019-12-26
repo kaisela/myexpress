@@ -31,19 +31,6 @@ describe('服务器测试', () => {
         done()
       })
   })
-  // 测试get: /get/:id 并输出{id:12}
-  it('GET /get/:id', (done) => {
-    request
-      .get('/get/12')
-      .expect(200)
-      .end((err, res) => {
-        if (err) 
-          return done(err)
-        let params = JSON.parse(res.text)
-        assert.equal(params.id, 12, 'id is wrong') // 如果输出的不是传入的12，测试不通过
-        done()
-      })
-  })
   // 如果走的不是examples中的post：/post/path 测试不通过
   it('POST /post/path', (done) => {
     request
@@ -56,4 +43,81 @@ describe('服务器测试', () => {
         done()
       })
   })
+
+  // 测试get: /get 带query
+  it('GET /get', (done) => {
+    request
+      .get('/get?test=once')
+      .expect(200)
+      .end((err, res) => {
+        if (err) 
+          return done(err)
+        let params = JSON.parse(res.text)
+        assert.equal(params.test, 'once use', 'res.text must has prototype test and the value must be once use') // 经过use方法处理后的test为once+ use = once use
+        done()
+      })
+  })
+
+  // 如果走的不是examples中的post：/user/:id/:name 测试不通过
+  it('POST /user/12/kaisela', (done) => {
+    request
+      .post('/user/12/kaisela')
+      .expect(200)
+      .end((err, res) => {
+        if (err) 
+          return done(err)
+        let params = JSON.parse(res.text)
+        assert.equal(params.id, '15', 'id must be 15') // 经过param方法处理后的id为12+3 = 15
+        assert.equal(params.name, 'kaisela param', 'name must be kaisela param')
+        // 经过param方法处理后的id为kaisela+ param = kaisela param
+        done()
+      })
+  })
+
+  // 如果走的不是examples中的post：/user/:id测试不通过
+  it('POST /user/17', (done) => {
+    request
+      .post('/user/17')
+      .expect(200)
+      .end((err, res) => {
+        if (err) 
+          return done(err)
+        let params = JSON.parse(res.text)
+        // 经过param方法处理后的id为17+3 = 20
+        assert.equal(params.id, '20', 'id must be 20')
+        done()
+      })
+  })
+
+  // 如果走的不是examples中的post：/name/:name测试不通过
+  it('POST /name/ke', (done) => {
+    request
+      .post('/name/ke')
+      .expect(200)
+      .end((err, res) => {
+        if (err) 
+          return done(err)
+        let params = JSON.parse(res.text)
+        // 经过param方法处理后的id为ke+ param = ke param
+        assert.equal(params.name, 'ke param', 'name must be ke param')
+        done()
+      })
+  })
+
+  // 如果走的不是examples中的post：/user/:id/:name 测试不通过
+  /* it('POST /user/12/user', (done) => {
+    request
+      .post('/user/12/user')
+      .expect(200)
+      .end((err, res) => {
+        console.log(res)
+        if (err) {
+          if (err === 'error') {
+            return done()
+          }
+        }
+        done()
+      })
+  }) */
+
 })

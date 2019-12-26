@@ -22,7 +22,15 @@ function Layer(path, options, fn) {
 
 Layer.prototype.handle_request = function handle(req, res, next) {
   let fn = this.handle
-  fn(req, res, next)
+  if (fn.length > 3) {
+    next()
+  }
+  try {
+    fn(req, res, next)
+  } catch (err) {
+    next(err)
+  }
+
 }
 
 /**

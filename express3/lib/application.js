@@ -92,10 +92,11 @@ app.listen = function listen() {
 app.lazyrouter = function () {
   if (!this._router) {
     this._router = new Router()
+    // 3:新增 注册处理query的中间件
+    this
+      ._router
+      .use(query(this.get('query parser fn')))
   }
-  this
-    ._router
-    .use(query(this.get('query parser fn')))
 }
 
 /**
@@ -134,4 +135,34 @@ app.param = function param(name, fn) {
     ._router
     .param(name, fn)
   return this
+}
+/**
+ * 3:新增 暴露给用户注册中间件的结构，主要调用router的use方法
+ * @param {*} fn
+ */
+app.use = function use(fn) {
+  let offset = 0
+  let path = '/'
+
+  if (typeof fn !== 'function') {
+    let arg = fn
+    while (Array.isArray(arg) && arg.length !== 0) {
+      arg = arg[0]
+    }
+
+    if (typeof arg !== 'function') {
+      offset = 1
+      path = fn
+    }
+  }
+  let fns = slice.call(arguments, offset)
+  if (fns.length === 0) {
+    throw new TypeError('app.use() require a middlewaare function')
+  }
+
+  this.lazyrouter()
+  let router = this._router
+  fns.forEach(function (fn) {
+    router.use(path, fn)
+  })
 }

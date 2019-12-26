@@ -1,23 +1,27 @@
 
 ## 回顾
-上一篇软文主要是介绍了项目的搭建，实现了一个基本的框架。引入 mocha + chai + supertest 测试加入项目中，实现了服务器的启动、app 对象get方法的简化版本以及项目基本结构的确定。对于get方法只实现到通过path找到对应的callback。稍简单的功能
+上一次的迭代中，主要是实现了简化版的router，并对/get/:id 式的路由进行解析。同时实现app.Methods相应的接口
 ## 实现目标
-迭代二的实现目标主要是引入简化版的router，并对/get/:id 式的路由进行解析。同时实现app.Methods相应的接口
+本次迭代主要是实现了app.param，app.use，以及req.query中参数的提取工作。其实在本次迭代中app.param和query足以形成一个迭代，再加上app.use内容就比较多，不过我还是将它们放在一个迭代中，还请读者多费些时间去理解。因为理解到这一层了，express的真面目已经揭开一大半了
 
 ## 项目结构
 ```javascript
-express1
+express3
   |
   |-- lib
+  |    |-- middleware // 新增 中间件文件夹
+  |    |    |-- query.js // 新增 实现req.query提取的中间件
+  |
   |    |-- router // 实现简化板的router
   |    |    |-- index.js // 实现路由的遍历等功能
   |    |    |-- layer.js // 装置path，method cb对应的关系
   |    |    |-- route.js // 将path和fn的关系实现一对多
   |    |-- express.js //负责实例化application对象
   |    |-- application.js //包裹app层
+  |    |-- utils.js // 新增，目前只是用于query中间件的实现的所需的工具函数
   |
   |-- examples
-  |    |-- index.js // express1 实现的使用例子
+  |    |-- index.js // express 实现的使用例子
   |
   |-- test
   |    |
@@ -27,190 +31,289 @@ express1
   |-- package.json // node配置文件
 
 ```
+## 重要概念引入
+### 中间件
+在express中，中间件其实是一个介于web请求来临后到调用处理函数前整个流程体系中间调用的组件。其本质是一个函数，内部可以访问修改请求和响应对象，并调整接下来的处理流程。
+
+express官方给出的解释如下：
+>Express 是一个自身功能极简，完全是由路由和中间件构成一个的 web 开发框架：从本质上来说，一个 Express 应用就是在调用各种中间件。
+>
+><i>中间件（Middleware)</i> 是一个函数，它可以访问请求对象（[request object](http://www.expressjs.com.cn/4x/api.html#req) (<span style='color:#e83e8c'>req</span>)）, 响应对象（[response object](http://www.expressjs.com.cn/4x/api.html#res) (<span style='color:#e83e8c'>res</span>)）, 和 web 应用中处于请求-响应循环流程中的中间件，一般被命名为 next 的变量。
+>
+>中间件的功能包括：
+>
+>- 执行任何代码。
+>- 修改请求和响应对象。
+>- 终结请求-响应循环。
+>- 调用堆栈中的下一个中间件。
+>
+>如果当前中间件没有终结请求-响应循环，则必须调用 <span style='color:#e83e8c'>next() </span>方法将控制权交给下一个中间件，否则请求就会挂起。
+>
+>Express 应用可使用如下几种中间件：
+>
+>- [应用及中间件](http://www.expressjs.com.cn/guide/using-middleware.html#middleware.application)
+>- [路由及中间件](http://www.expressjs.com.cn/guide/using-middleware.html#middleware.router)
+>- [错误处理中间件](http://www.expressjs.com.cn/guide/using-middleware.html#middleware.error-handling)
+>- [内置中间件](http://www.expressjs.com.cn/guide/using-middleware.html#middleware.built-in)
+>- [第三方中间件](http://www.expressjs.com.cn/guide/using-middleware.html#middleware.third-party)
+>
+>使用可选则挂载路径，可在应用级别或路由级别装载中间件。另外，你还可以同时装在一系列中间件函数，从而在一个挂载点上创建一个子中间件栈。
+
+所以对于迭代二来说Router和Route类中的<span style='color:#e83e8c'>this.stack</span>属性内部的每个handle都是一个中间件，根据使用接口不同区别了**应用级中间件**和**路由级中间件**，而四个参数的处理函数就是**错误处理中间件**，对于**内置中间件**我们暂时还未涉及，而app.use接口将要实现的就是嵌入**第三方中间件**
+
+在express中的中间件其实和java中面相切面编程中的拦截器的作用基本一致。可以在某一类接口调用之前，使用中间件做统一处理。比如：app.param 也是一种中间件，只是它针对的只是对参数处理。而use和router都是针对请求路径来处理。
+
 ## 问题分析
-本迭代的重点在于理清method，url，callback之间的关系，先看express源码开放出来的api：
+本次迭代主要是实现了app.param，app.use，以及req.query中参数的提取工作
+
+### app.use的官方api
 ```javascript
-app.get(path, callback [, callback ...])
-
-app.get('/', function (req, res, next) {
-  next()
-})
-
-app.get('/', function (req, res) {
-  res.send('GET request to homepage');
-})
-app.post('/', function (req, res) {
-  res.send('POST request to homepage');
-})
+app.use(function(req, res, next) { // 将会拦截所有请求
+  res.send('Hello World');
+});
+app.use('/abcd', function (req, res, next) { // 将会拦截路径为 /abcd 的请求
+  next();
+});
+app.use('/abc?d', function (req, res, next) { // 将会拦截路径为 /abcd 和 /abd 的请求
+  next();
+});
+app.use(/\/abc|\/xyz/, function (req, res, next) { // 将会拦截路径为 /abc 和 /xyz 的请求
+  next();
+});
 ```
-从上面的接口可以看出:
+以上为app.use的一些用法示例，由于use方法和router的参数很相似，只是少了method这个变量。所以在express的源码中，use方法注册的中间件的数据结构将使用router的第一层（Router）中的stack存储，只是use注册的Layer中少了route对象
 
-1、一个path是可以对应多个callback
-
-2、一个path甚至可以对应多个method
-
-3、一个method可以对应多个path
-
-4、一个callback只能对应一个method和path
-
-迭代二目标就是准确的通过url解析找到对应的path，并确定method，在这两个变量确定的情况下将其对应的callback逐个执行一遍，顺带将“/get/:id”形式的参数进行分析剥离一下
-## 执行流程
-express有两大核心，第一个是路由的处理，第二个是中间件装载。理解路由的实现尤为关键。在上一次迭代中，我们是在appliction中定义了一个paths数组，用来预存path和callback的对应关系并且他们之间的关系我们视为简单的一对一。在迭代二中，我们path和callback的关系变得复杂起来，不但从一对一变成了一对多，而且还引入了method。对于迭代二的整个实现过程，我们可以分解为以下几个步骤：
-
-1、创建route实例确定path和route实例的关系，path通过path-to-regexp包进行正则解析
-
-2、在path一定的情况下，在route实例中确定method和callback对应预存
-
-3、通过application的listen拦截所有请求
-
-4、分析url，遍历所有的path，与path的正则进行匹配找到path对应的route
-
-5、匹配request中的method，遍历path对应的route中所有的callback，method的关系，找到method对应的callback，逐个执行。
-
-从以上的描述中path和route的关系，method和callback的关系需要地方存放。在此引入Layer类。而整个服务的route执行流程等放入Router类中管理。至此，路由由3个类组成：Router，Layer，Route。关系如下图所示
-
-
-![](https://user-gold-cdn.xitu.io/2019/12/11/16ef2ce564ce1bc7?w=1606&h=1148&f=png&s=295272)
-实例关系图如下：
+### app.param的官方api
 ```javascript
- --------------
-| Application  |                                 ---------------------------------------------------------
-|     |        |        ----- -----------        |     0     |     1     |     2     |     3     |  ...  |
-|     |-router | ----> |     | Layer      |       ---------------------------------------------------------
---------------        |  0  |   |-path    |       | Layer     | Layer     | Layer     | Layer     |       |
- application          |     |   |-route   |---->  |  |- method|  |- method|  |- method|  |- method|  ...  |
-                      |     |   |-dispatch|       |  |- callback||- callback||- callback||- callback|     |
-                      |-----|-------------|       ---------------------------------------------------------
-                      |     | Layer       |                               route
-                      |  1  |   |-path    |
-                      |     |   |-route   |
-                      |     |   |-dispatch|
-                      |-----|-------------|
-                      |     | Layer       |
-                      |  2  |   |-path    |
-                      |     |   |-route   |
-                      |     |   |-dispatch|
-                      |-----|-------------|
-                      | ... |   ...       |
-                       ----- -------------
+app.param('id', function (req, res, next, id) { // 当注册路由为 .../:id/...形式时会被此中间件拦截
+  console.log('CALLED ONLY ONCE');
+  next();
+});
+
+app.param(['id', 'page'], function (req, res, next, value) { // 拦截含有id 或者 page参数的路由请求
+  console.log('CALLED ONLY ONCE with', value);
+  next();
+});
+
+// 以上两种方式的另一种写法，二者选其一 ，文中和测试用例中我们以上一种为例
+app.param(function(param, option) {
+  return function (req, res, next, val) {
+    if (val == option) {
+      next();
+    }
+    else {
+      next('route');
+    }
+  }
+});
+
+// using the customized app.param()
+app.param('id', 1337);
+
+```
+param的方法的结构就较为简单，分为参数param和callback两种，其二者的关系为一对多的关系，在express的源码中实现是放在Router类中，数据结构由params对象和_params数组两种方式存储，第一种书写方式只需要用到params对象，第二种书写方式则是后面所有的param注册，都是使用前面return的中间件函数。此文中对第二种书写方式不做详解，请自行看源码理解
+
+Router中params的结构为{param:[fn,fn...]}
+
+### req.query
+
+主要是对请求路径中的query部分进行解析，主要使用的方法为parseurl，querystring.parse。url转换后的结构示例如下
+
+url.parse (http://user:pass@host.com:8080/users/user.php?userName=Lulingniu&age=40&sex=male#namel1);
+属性名 |值
+---|---
+href | http://user:pass@host.com:8080/users/user.php?userName=Lulingniu&age=40&sex=male#namel1
+protocol | http
+slashes | true
+host | host.com:8080
+auth|user:pass
+hostname|host.com
+port|8080
+pathname|/users/user.php
+search|?userName=Lulingniu&age=40&sex=male
+path|/users/user.php?userName=Lulingniu&age=40&sex=male
+query|userName=Lulingniu&age=40&sex=male
+hash|#namel
+
+## 数据结构
+
+
+```javascript
+ --------------                                     ----- ----------
+| Application  | ------------------------------->   | params       |
+|     |        |        ----- -------------         |   |-param    |
+|     |-router | ----> |     | Layer       |        |   |-callbacks|
+--------------        |  0  |   |-path     |        ----- ----------
+ application          |     |   |-callbacks|           router
+                      |-----|--------------|
+                      |     | Layer        |
+                      |  1  |   |-path     |
+                      |     |   |-callbacks|
+                      |-----|--------------|
+                      |     | Layer        |
+                      |  2  |   |-path     |
+                      |     |   |-callbacks|
+                      |-----|--------------|
+                      | ... |   ...        |
+                       ----- --------------
                             router
 ```
-
+对于query的实现，其实就是在所有路由注册前面加上了一个处理query的中间件，和中间件的结构图一样，只是这里的中间件是一个特定的函数
 ## 代码解析
-首先看看lib/application.js，迭代二中在app中加入了_router属性，app[method]方法，lazyrouter方法：
+此次迭代中新增的代码比较多，也比较零碎，因此我在文件的注释中前面加了一个“迭代编号:新增”的字样，来表示此段代码是在此迭代中新增的。
 
-_router:  存储Router对应的实例
-
-app[method]: 对应的app.get,app.post等方法，对应的参数为path，callbacks。其中method对应的是http.METHODS("ACL,BIND,CHECKOUT,CONNECT,COPY,DELETE,GET,HEAD,LINK,LOCK,M-SEARCH,MERGE,MKACTIVITY,MKCALENDAR,MKCOL,MOVE,NOTIFY,OPTIONS,PATCH,POST,PROPFIND,PROPPATCH,PURGE,PUT,REBIND,REPORT,SEARCH,SOURCE,SUBSCRIBE,TRACE,UNBIND,UNLINK,UNLOCK,UNSUBSCRIBE")中的方法。这个方法为app在这次迭代中的主角，主要是对上面的实例关系图进行注册。每执行一次app[method]方法其实就是在注册路由，将参数中的path和route对应起来，同时将method和callbacks对应。分别存在router的stack，route的stack中。
-
-lazyrouter：实例化_router
-
-源码:
+### app.use
+application.js中新增use接口，主要是调用router中的use方法
 ```javascript
 /**
- * 对路由实现装载，实例化
+ * 3:新增 暴露给用户注册中间件的结构，主要调用router的use方法
+ * @param {*} fn
  */
-app.lazyrouter = function () {
-  if (!this._router) {
-    this._router = new Router()
-  }
-}
+app.use = function use(fn) {
+  let offset = 0
+  let path = '/'
 
-/**
- * 实现post，get等http.METHODS 对应的方法
- * http.METHODS: "ACL,BIND,CHECKOUT,CONNECT,COPY,DELETE,GET,HEAD,LINK,LOCK,M-SEARCH,MERGE,MKACTIVITY,MKCALENDAR,MKCOL,MOVE,NOTIFY,OPTIONS,PATCH,POST,PROPFIND,PROPPATCH,PURGE,PUT,REBIND,REPORT,SEARCH,SOURCE,SUBSCRIBE,TRACE,UNBIND,UNLINK,UNLOCK,UNSUBSCRIBE"
- */
-
-methods.forEach((method) => {
-  method = method.toLowerCase()
-  app[method] = function (path) {
-    if (method === 'get' && arguments.length === 1) { // 当为一个参数时app的get方法，返回settings中的属性值
-      return this.set(path)
+  if (typeof fn !== 'function') {
+    let arg = fn
+    while (Array.isArray(arg) && arg.length !== 0) {
+      arg = arg[0]
     }
-    this.lazyrouter()
-    let route = this
-      ._router
-      .route(path) // 调用_router的route方法，对path和route注册
-    route[method].apply(route, slice.call(arguments, 1)) // 调用route的method方法，对method和callbacks注册
+
+    if (typeof arg !== 'function') {
+      offset = 1
+      path = fn
+    }
   }
-})
-```
-application对原来的handle方法也做出了修改，调用的是_router.handle 对url进行精确定位和匹配。在handle中还引入了finalhandler方法，对http请求发生错误时做最后的处理，具体查看： https://www.npmjs.com/package/finalhandler
-```javascript
-/**
- * http.createServer 中的回调函数最终执行
- * 调用的是_router.handle 对url进行精确定位和匹配
- */
-app.handle = function handle(req, res) {
+  let fns = slice.call(arguments, offset)
+  if (fns.length === 0) {
+    throw new TypeError('app.use() require a middlewaare function')
+  }
+
+  this.lazyrouter()
   let router = this._router
-  let done = finalhandler(req, res, {
-    env: this.get('env'),
-    onerror: logerror.bind(this)
+  fns.forEach(function (fn) {
+    router.use(path, fn)
   })
-  if (!router) {
-    done()
-  }
-  router.handle(req, res, done)
 }
-
-function logerror(err) {
-  if (this.get('env') !== 'test')
-    console.error(err.stack || err.toString());
-  }
 ```
-Router类的实现主要关注在route方法和handle两个方法中，一个是用来注册，一个是遍历注册的数组.
-
-route方法简单明了一看就明白，最后将route返回到app中，再调用当前的实例route[method]方法注册method和callbacks的关系
-
-handle方法就比较复杂，主要分为两块，一个是对错误的处理，发生错误是调用app中的finalhandle，一个是对stack数组的遍历，找到url匹配的路由。对stack遍历的方式采用的是next方法递归调用的方式。这种思想类似于es6中的Iterator接口的实现
+router中新增use方法，主要是完成对中间件的注册，在handle中遍历
 ```javascript
 /**
- * 将path和route对应起来，并放进stack中，对象实例为layer
+ * 3:新增 主要用于注册路由相关的中间件，此迭代中，在注册query中间件中使用到
+ * @param {*} fn
  */
-proto.route = function route(path) {
-  let route = new Route(path)
-  let layer = new Layer(path, {
-    end: true
-  }, route.dispatch.bind(route))
-  layer.route = route
-  this
-    .stack
-    .push(layer)
-  return route
-}
+proto.use = function use(fn) {
+  let path = '/'
+  let offset = 0
+  // 为app.use 接口准备，第一个参数可能时路径的正则表达式
+  if (typeof fn !== 'function') {
+    let arg = fn
+    while (Array.isArray(arg) && arg.length != 0) {
+      arg = arg[0]
+    }
+    if (typeof arg !== 'function') {
+      offset = 1
+      path = arg
+    }
+  }
 
+  let callbacks = slice.call(arguments, offset)
+  if (callbacks.length === 0) {
+    throw new TypeError('Router.use() requires a middleware function')
+  }
+
+  // 将中间件加入到stack栈中，方便handle函数遍历中执行
+  for (let i = 0; i < callbacks.length; i++) {
+    let fn = callbacks[i]
+    if (typeof fn !== 'function') {
+      throw new TypeError('Router.use() requires a middleware function but not a ' + gettype(fn))
+    }
+    let layer = new Layer(path, {
+      strict: false,
+      end: false
+    }, fn)
+    layer.route = undefined
+    this
+      .stack
+      .push(layer)
+  }
+}
+```
+
+application.js中新增param接口，主要是调用router中的param方法
+```javascript
+/**
+ * 3:新增 实现app的param接口
+ * @param {*} name 参数名称 可以是数组 或者 字符串
+ * @param {*} fn 需要处理的中间件
+ */
+app.param = function param(name, fn) {
+  this.lazyrouter()
+  // 如果name是数组时，分割调用自身
+  if (Array.isArray(name)) {
+    for (let i = 0; i < name.length; i++) {
+      this.param(name[i], fn)
+    }
+    return this
+  }
+  this
+    ._router
+    .param(name, fn)
+  return this
+}
+```
+router中新增param方法，主要是完成对param中间件的注册，在handle中处理
+```javascript
+/**
+ * 3:新增 对传过来的参数进行拦截，将参数拦截相关存入到params中，在handle中进行分解执行
+ */
+proto.param = function param(name, fn) {
+  if (typeof name === 'function') {
+    this
+      ._params
+      .push(name)
+    return
+  }
+  if (name[0] === ':') {
+    name = name.substr(1)
+  }
+  let params = this._params
+  let len = this._params.length
+  let ret
+  for (let i = 0; i < len; i++) {
+    if (ret = params[i](name, fn)) {
+      fn = ret
+    }
+  }
+  (this.params[name] = this.params[name] || []).push(fn)
+}
+```
+
+router中的handle方法中新增对use中间件的遍历逻辑，主要是通过是否有route来判断。新增process_params方法对params对象的处理，主要是和layer.keys进行比较，匹配到的时候逐个执行param所对应的callbacks。在process_params中使用param递归遍历keys，使用paramCallback的递归对param对应的callbacks进行遍历。这里就不具体贴代码了，大家自行移步git看代码
+```javascript
 /**
  * 遍历stack数组，并处理函数, 将res req 传给route
  */
 
 proto.handle = function handle(req, res, out) {
-  let self = this
-  debug('dispatching %s %s', req.method, req.url)
-  let idx = 0
-  let stack = self.stack
-  let url = req.url
-  let done = out
+  ...
   next() //第一次调用next
   function next(err) {
-    let layerError = err === 'route'
-      ? null
-      : err
-    if (layerError === 'router') { //如果错误存在，再当前任务结束前调用最终处理函数
-      setImmediate(done, null)
-      return
+    ...
+    // 3:修改 对req调用handle时的初始值进行保存，返回处理函数，以便随时恢复初始值
+      let done = restore(out, req, 'baseUrl', 'next', 'params')
+    ...
+    // 3: 新增path ，用于获取除query之外的path
+    let path = getPathname(req)
+    if (!path) {
+      return done(layerError)
     }
-
-    if (idx >= stack.length) { // 遍历完成之后调用最终处理函数
-      setImmediate(done, layerError)
-      return
-    }
-
     let layer
     let match
     let route
     while (match !== true && idx < stack.length) { //从数组中找到匹配的路由
       layer = stack[idx++]
-      match = matchLayer(layer, url)
+      match = matchLayer(layer, path)
       route = layer.route
       if (typeof match !== 'boolean') {
         layerError = layerError || match
@@ -219,163 +322,159 @@ proto.handle = function handle(req, res, out) {
       if (match !== true) {
         continue
       }
-      if (layerError) {
-        match = false
+      // 3:新增，原逻辑中不可能存在route没有的情况，在3中加入中间件，其route为undefined
+      if (!route) {
         continue
       }
-      let method = req.method
-      let has_method = route._handles_method(method)
-      if (!has_method) {
-        match = false
-        continue
-      }
+    ...
     }
     if (match !== true) { // 循环完成没有匹配的路由，调用最终处理函数
       return done(layerError)
     }
-    res.params = Object.assign({}, layer.params) // 将解析的‘/get/:id’ 中的id剥离出来
-    layer.handle_request(req, res, next) //调用route的dispatch方法，dispatch完成之后在此调用next，进行下一次循环
-
+    req.params = Object.assign({}, layer.params) // 将解析的‘/get/:id’ 中的id剥离出来
+    // 3:新增，主要是处理params
+    self.process_params(layer, paramcalled, req, res, function (err) {
+      if (err) {
+        return next(layerError || err)
+      }
+      if (route) {
+        //调用route的dispatch方法，dispatch完成之后在此调用next，进行下一次循环
+        return layer.handle_request(req, res, next)
+      }
+      // 3:新增，加入handle_error处理
+      trim_prefix(layer, layerError, '', path)
+    })
   }
+
+  function trim_prefix(layer, layerError, layerPath, path) {
+    if (layerPath.length !== 0) {
+      let c = path[layerPath.length]
+      if (c && c !== '/' && c !== '.')
+        return next(layerError)
+    }
+    if (layerError) {
+      layer.handle_error(layerError, req, res, next)
+    } else {
+      layer.handle_request(req, res, next)
+    }
+  }
+
 }
-
 ```
-Route类的实现主要是在route[method]方法和dispatch，和Router中的route和handle的功能类似，只是route[method]注册是的method和callback的对应关系，而dispatch遍历的则是callbacks
-
-route[method]同样比较简单，主要是将app中对应method的第二个以后的参数进行遍历，并将其和method对应起来
-
-dispatch采用的是和router中的handle一样的方式--> next递归遍历stack。处理完成后回调router的next
-
+restore方法为一个高阶函数，主要作用是对一个对象的初始值进行存储，在返回的函数中以便随时恢复
 ```javascript
 /**
- * 对同一path对应的methods进行注册，存放入stack中
+ * 3:新增 对obj对象的一些属性进行恢复出厂设置
+ * @param {*} fn 恢复值之后需要调用的函数
+ * @param {*} obj 需要恢复值的对象
+ * @param {*}  augments[i+2] obj需要恢复的属性
  */
-methods.forEach((method) => {
-  method = method.toLowerCase()
+function restore(fn, obj) {
+  let props = new Array(arguments.length - 2)
+  let vals = new Array(arguments.length - 2)
 
-  Route.prototype[method] = function () {
-    let handles = arguments
-
-    for (let i = 0; i < handles.length; i++) {
-      let handle = handles[i]
-      if (typeof handle !== 'function') {// 如果handle不是function，则对外抛出异常
-        let msg = `Route.${method}() requires a callback function but not a ${type}`
-        throw new Error(msg)
-      }
-
-      debug('%s %o', method, this.path)
-
-      let layer = new Layer('/', {}, handle) // 注册method和handle的关系
-      layer.method = method
-
-      this.methods[method] = true
-      this
-        .stack
-        .push(layer)
-    }
-    return this
+  // 保存函数调用时，obj对应属性的值
+  for (let i = 0; i < props.length; i++) {
+    props[i] = arguments[i + 2]
+    vals[i] = obj[props[i]]
   }
-})
+
+  return function () {
+    // 调用函数时，对obj属性值进行恢复
+    for (let i = 0; i < props.length; i++) {
+      obj[props[i]] = vals[i]
+    }
+    fn.apply(this, arguments);
+  }
+
+}
+```
+还有一个是query中间件介绍，在utils中通过compileQueryParser来确定querysting调用的是那个方法，默认值是在qs和querystring中做选择，当然你也可以自己写处理方法。在路由初始化的时候进行中间件的注册
+
+```javascript
 
 /**
- * 遍历stack数组，并处理函数
+ * 对路由实现装载，实例化
  */
-Route.prototype.dispatch = function dispatch(req, res, done) {
-  let idx = 0
-  let stack = this.stack
-  if (stack.length === 0) {
-    return done() // 函数出来完成之后，将执行入口交给母函数管理，此处的done为router handle中的next
+app.lazyrouter = function () {
+  if (!this._router) {
+    this._router = new Router()
+    // 3:新增 注册处理query的中间件
+    this
+      ._router
+      .use(query(this.get('query parser fn')))
   }
-
-  let method = req
-    .method
-    .toLowerCase()
-  req.route = this
-  next()
-  function next() {
-    let layer = stack[idx++]
-if (!layer) { // 当循环完成，调回router handle中的next
-      return done()
-    }
-    if (layer.method && layer.method !== method) { // 不符合要求，继续调用next进行遍历
-      return next()
-    }
-
-    layer.handle_request(req, res, next)
-  }
-
-}
-```
-Layer类的作用主要是关系的关联，path和route的关联，path对应的route中method和callback的关联。再有就是对path的处理，主要的方法也有两个：match、handle_request
-
-handle_request：主要是执行layer中的handle，在router中layer对应的handle为layer.route对应的dispatch，在route中的handle对应的则是app的method传进来的callback函数
-
-match：对uri和path进行匹配，匹配上了返回true否侧false。中间还对'/get/:id'式的路由中的id进行参数剥离，存入params中.在这个类中用到了path-to-regexp包，主要是对path进行解析，具体查看：https://www.npmjs.com/package/path-to-regexp
-
-```javascript
-
-Layer.prototype.handle_request = function handle(req, res, next) {
-  let fn = this.handle
-  fn(req, res, next)
 }
 
+/**
+ * 3:新增 处理req.url query部分的中间件
+ */
+let merge = require('utils-merge')
+let parseUrl = require('parseurl')
+let qs = require('qs')
 
-Layer.prototype.match = function match(path) {
-  let match
-  if (path) {
-    match = this
-      .regexp
-      .exec(path)
+module.exports = function query(options) {
+  let opts = merge({}, options)
+  let queryparse = qs.parse
+
+  if (typeof options === 'function') {
+    queryparse = options
+    opts = undefined
   }
 
-  if (!match) {
-    this.params = undefined
-    this.path = undefined
-    return false
+  if (opts !== undefined && opts.allowPrototypes === undefined) {
+    opts.allowPrototypes = true
   }
 
-  this.params = {}
-  this.path = match[0]
-  if (this.keys) {
-    let keys = this.keys
-    let params = this.params
-    for (let i = 1; i < match.length; i++) {
-      let key = keys[i - 1]
-      let prop = key.name
-      let val = decode_param(match[i])
-
-      if (val !== undefined) {
-        params[prop] = val
-      }
+  return function query(req, res, next) {
+    if (!req.query) {
+      let val = parseUrl(req).query
+      req.query = queryparse(val, opts)
     }
+    next()
   }
-  return true
 }
 ```
 
-exammple/index.js 在入口文件中加入了一些新的路由
+exammple/index.js 在入口文件中加入了一些新的测试用例
 ```javascript
-// localhost:3000/path 时调用
-app.get('/path', function (req, res, next) {
-  console.log('visite /path , send : path')
-  // res.end('path')
-  pathJson.index = 1
+// 3:新增 输出传入的id，和name时拦截处理参数
+app.param([
+  'id', 'name'
+], function (req, res, next, val, name) {
+  if (name == 'id') {
+    req.params.id = ((val - 0) + 3) + ''
+  }
+  if (name == 'name') {
+    req.params[name] = req.params[name] + ' param'
+  }
   next()
 })
-// localhost:3000/path 时调用，先走第一个，再走这个
-app.get('/path', function (req, res) {
-  console.log('visite /path , send : path')
-  pathJson.end = true
-  res.end(JSON.stringify(pathJson))
+// 3:新增 当路径为/get 时拦截处理query
+app.use('/get', function (req, res, next) {
+  for (key in req.query) {
+    req.query[key] = req.query[key] + ' use'
+  }
+  next()
 })
-// localhost:3000/ 时调用
-app.get('/', function (req, res) {
-  console.log('visite /, send: root')
-  res.end('root')
+
+// 测试param处理id ,name
+app.post('/user/:id/:name', function (req, res) {
+  res.end(JSON.stringify(req.params))
 })
-// 发生post请求的时候调用
-app.post('/post/path', function (req, res) {
-  res.end('post path')
+
+// 测试param处理id
+app.post('/user/:id', function (req, res) {
+  res.end(JSON.stringify(req.params))
+})
+
+// 测试param处理name
+app.post('/name/:name', function (req, res) {
+  res.end(JSON.stringify(req.params))
+})
+
+app.get('/get', function (req, res) {
+  res.end(JSON.stringify(req.query))
 })
 // 输出传入的id
 app.get('/get/:id', function (req, res) {
@@ -385,61 +484,75 @@ app.get('/get/:id', function (req, res) {
 test/index.js 测试exapmles中的代码，验证是否按照地址的不同，进了不同的回调函数
 
 ```javascript
-// 如果走的不是examples中的get：/path 测试不通过;
-  it('GET /path', (done) => {
+
+  // 测试get: /get 带query
+  it('GET /get', (done) => {
     request
-      .get('/path')
-      .expect(200)
-      .end((err, res) => {
-        if (err)
-          return done(err)
-        let json = JSON.parse(res.text)
-        assert.equal(json.index, 1, 'didn`t visite the first route /path') // 查看是否调用了第一次的注册
-        assert.equal(json.end, true, 'res is wrong') // 查看是否调用了第二次注册
-        done()
-      })
-  })
-  // 测试get: /get/:id 并输出{id:12}
-  it('GET /get/:id', (done) => {
-    request
-      .get('/get/12')
+      .get('/get?test=once')
       .expect(200)
       .end((err, res) => {
         if (err)
           return done(err)
         let params = JSON.parse(res.text)
-        assert.equal(params.id, 12, 'id is wrong') // 如果输出的不是传入的12，测试不通过
-        done()
-      })
-  })
-  // 如果走的不是examples中的post：/post/path 测试不通过
-  it('POST /post/path', (done) => {
-    request
-      .post('/post/path')
-      .expect(200)
-      .end((err, res) => {
-        if (err)
-          return done(err)
-        assert.equal(res.text, 'post path', 'res is wrong') // 根据response调用end方法时的输出为: post path
+        assert.equal(params.test, 'once use', 'res.text must has prototype test and the value must be once use') // 经过use方法处理后的test为once+ use = once use
         done()
       })
   })
 
+  // 如果走的不是examples中的post：/user/:id/:name 测试不通过
+  it('POST /user/12/kaisela', (done) => {
+    request
+      .post('/user/12/kaisela')
+      .expect(200)
+      .end((err, res) => {
+        if (err)
+          return done(err)
+        let params = JSON.parse(res.text)
+        assert.equal(params.id, '15', 'id must be 15') // 经过param方法处理后的id为12+3 = 15
+        assert.equal(params.name, 'kaisela param', 'name must be kaisela param')
+        // 经过param方法处理后的id为kaisela+ param = kaisela param
+        done()
+      })
+  })
+
+  // 如果走的不是examples中的post：/user/:id测试不通过
+  it('POST /user/17', (done) => {
+    request
+      .post('/user/17')
+      .expect(200)
+      .end((err, res) => {
+        if (err)
+          return done(err)
+        let params = JSON.parse(res.text)
+        // 经过param方法处理后的id为17+3 = 20
+        assert.equal(params.id, '20', 'id must be 20')
+        done()
+      })
+  })
+
+  // 如果走的不是examples中的post：/name/:name测试不通过
+  it('POST /name/ke', (done) => {
+    request
+      .post('/name/ke')
+      .expect(200)
+      .end((err, res) => {
+        if (err)
+          return done(err)
+        let params = JSON.parse(res.text)
+        // 经过param方法处理后的id为ke+ param = ke param
+        assert.equal(params.name, 'ke param', 'name must be ke param')
+        done()
+      })
+  })
 
 ```
 
 test测试结果如下：
 
 
-![](https://user-gold-cdn.xitu.io/2019/12/11/16ef425a0a7a06c8?w=1128&h=544&f=png&s=56486)
+![](https://user-gold-cdn.xitu.io/2019/12/26/16f403740aa94a97?w=734&h=412&f=png&s=36079)
 
 ## 写在最后
-总结一下当前expross各个部分的工作。
-
-application代表一个应用程序，expross是一个工厂类负责创建application对象。Router代表路由组件，负责应用程序的整个路由系统。组件内部由一个Layer数组构成，每个Layer代表一组路径相同的路由信息，具体信息存储在Route内部，每个Route内部也是一个Layer对象，但是Route内部的Layer和Router内部的Layer是存在一定的差异性。
-
-Router内部的Layer，主要包含path、route、handle(route.dispatch)属性。
-Route内部的Layer，主要包含method、handle属性。
-如果一个请求来临，会现从头至尾的扫描router内部的每一层，而处理每层的时候会先对比URI，相同则扫描route的每一项，匹配成功则返回具体的信息，没有任何匹配则返回未找到。
+到此为止，express的两个比较重要的功能算是基本完成，虽然还有很多细节要完善。对于use方法可以路由嵌套的功能也许还要花一个篇幅讲解，看后面的时间吧。还有request，response的封装，模版引擎以及错误处理中间件。尤其是模版引擎，目前算是一点未引入
 ## 下期预告
-完善router，实现app.use 和app.params接口
+完善router，实现错误处理中间件 和use更多用法实现

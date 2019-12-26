@@ -54,7 +54,8 @@ proto.handle = function handle(req, res, out) {
   let idx = 0
   let stack = self.stack
   let url = req.url
-  let done = out
+  // 3:修改 对req调用handle时的初始值进行保存，返回处理函数，以便随时恢复初始值
+  let done = restore(out, req, 'baseUrl', 'next', 'params')
   let paramcalled = {}
   next() //第一次调用next
   function next(err) {
@@ -226,12 +227,14 @@ proto.process_params = function process_params(layer, called, req, res, done) {
       return param()
     }
 
-    if (paramCalled) {
+    if (paramCalled && (paramCalled.match === paramVal || (paramCalled.error && paramCalled.error !== 'route'))) {
       req.params[name] = paramCalled.value
       return param()
     }
 
     called[name] = paramCalled = {
+      error: null,
+      match: paramVal,
       value: paramVal
     }
     paramCallback()
@@ -243,7 +246,9 @@ proto.process_params = function process_params(layer, called, req, res, done) {
    */
   function paramCallback(err) {
     let fn = paramcallbacks[paramcbIndex++]
+    paramCalled.value = req.params[key.name]
     if (err) {
+      paramCalled.error = err
       return param(err)
     }
     // 临界值，跳出循环
@@ -315,4 +320,30 @@ function gettype(obj) {
   return toString
     .call(obj)
     .replace(objectRegExp, '$1')
+}
+
+/**
+ * 3:新增 对obj对象的一些属性进行恢复出厂设置
+ * @param {*} fn 恢复值之后需要调用的函数
+ * @param {*} obj 需要恢复值的对象
+ * @param {*}  augments[i+2] obj需要恢复的属性
+ */
+function restore(fn, obj) {
+  let props = new Array(arguments.length - 2)
+  let vals = new Array(arguments.length - 2)
+
+  // 保存函数调用时，obj对应属性的值
+  for (let i = 0; i < props.length; i++) {
+    props[i] = arguments[i + 2]
+    vals[i] = obj[props[i]]
+  }
+
+  return function () {
+    // 调用函数时，对obj属性值进行恢复
+    for (let i = 0; i < props.length; i++) {
+      obj[props[i]] = vals[i]
+    }
+    fn.apply(this, arguments);
+  }
+
 }
