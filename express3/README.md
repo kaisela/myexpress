@@ -120,19 +120,33 @@ Router中params的结构为{param:[fn,fn...]}
 主要是对请求路径中的query部分进行解析，主要使用的方法为parseurl，querystring.parse。url转换后的结构示例如下
 
 url.parse (http://user:pass@host.com:8080/users/user.php?userName=Lulingniu&age=40&sex=male#namel1);
+
 属性名 |值
+
 ---|---
+
 href | http://user:pass@host.com:8080/users/user.php?userName=Lulingniu&age=40&sex=male#namel1
+
 protocol | http
+
 slashes | true
+
 host | host.com:8080
+
 auth|user:pass
+
 hostname|host.com
+
 port|8080
+
 pathname|/users/user.php
+
 search|?userName=Lulingniu&age=40&sex=male
+
 path|/users/user.php?userName=Lulingniu&age=40&sex=male
+
 query|userName=Lulingniu&age=40&sex=male
+
 hash|#namel
 
 ## 数据结构
