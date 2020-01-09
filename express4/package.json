@@ -10,6 +10,7 @@
   "author": "kaisela",
   "license": "ISC",
   "dependencies": {
+    "array-flatten": "^3.0.0",
     "chai": "^4.2.0",
     "debug": "^4.1.1",
     "finalhandler": "^1.1.2",

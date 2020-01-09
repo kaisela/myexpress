@@ -6,14 +6,17 @@ const http = require('http')
 let app = exports = module.exports = {}
 let methods = http.METHODS // 获取http的所有请求方式
 const slice = Array.prototype.slice;
+const setPrototypeOf = require('setprototypeof')
 const Router = require('./router')
 const finalhandler = require('finalhandler') // http request 最后的函数处理,主要包括错误处理 https://www.npmjs.com/package/finalhandler
-
+const flatten = require('array-flatten').flatten
 const trustProxyDefaultSymbol = '@@symbol:trust_proxy_default'
 
 const compileQueryParser = require('./utils').compileQueryParser
 // 3:新增 req.query 中间件的处理
 const query = require('./middleware/query')
+// 4:新增 初始中间件，对req，res，app等进行相互关联
+const middleware = require('./middleware/init')
 
 /**
  * 初始化app对象需要的一些基础设置
@@ -24,7 +27,7 @@ const query = require('./middleware/query')
  * }
  */
 app.init = function init() {
-  this.setting = {}
+  this.settings = {}
   this.paths = []
   this.defaultConfiguration()
 }
@@ -37,15 +40,21 @@ app.defaultConfiguration = function defaultConfiguration() {
   this.set('jsonp callback name', 'callback')
   // 3:新增 设置query中间件的默认调用函数
   this.set('query parser', 'extended')
+
+  this.on('mount', function onmount(parent) {
+    setPrototypeOf(this.request, parent.request)
+    setPrototypeOf(this.response, parent.response)
+    setPrototypeOf(this.settings, parent.settings)
+  })
 }
 /**
  * 对app中setting对象的操作，为后期迭代预留
  */
 app.set = function set(key, val) {
   if (arguments.length === 1) {
-    return this.setting[key]
+    return this.settings[key]
   }
-  this.setting[key] = val
+  this.settings[key] = val
   // 3:新增 设置query中间件中query处理的默认调用函数
   switch (key) {
     case 'query parser':
@@ -96,6 +105,10 @@ app.lazyrouter = function () {
     this
       ._router
       .use(query(this.get('query parser fn')))
+    // 4:新增 初始中间件，对req，res，app等进行相互关联
+    this
+      ._router
+      .use(middleware.init(this))
   }
 }
 
@@ -155,7 +168,8 @@ app.use = function use(fn) {
       path = fn
     }
   }
-  let fns = slice.call(arguments, offset)
+  // 4:新增 对传入的参数进行处理，是参数可以传入数组
+  let fns = flatten(slice.call(arguments, offset))
   if (fns.length === 0) {
     throw new TypeError('app.use() require a middlewaare function')
   }
@@ -163,6 +177,23 @@ app.use = function use(fn) {
   this.lazyrouter()
   let router = this._router
   fns.forEach(function (fn) {
-    router.use(path, fn)
-  })
+    // 4:修改 通常use里面是一个express对象，或者router对象时会包含handle和set，不包含为普通中间件
+    if (!fn || !fn.handle || !fn.set) {
+      return router.use(path, fn)
+    }
+    // 4:新增 此时的fn为express或router对象，将当前express对象关联到fn
+    fn.parent = this
+
+    router.use(path, function mounted_app(req, res, next) {
+      let orig = req.app
+      // 4:新增 在中间件的回调函数中调用fn的handle
+      fn.handle(req, res, function (err) {
+        setPrototypeOf(req, orig.request)
+        setPrototypeOf(res, orig.response)
+        next(err)
+      })
+    })
+    // 4:新增 触发fn挂载完成事件
+    fn.emit('mount', this)
+  }, this)
 }

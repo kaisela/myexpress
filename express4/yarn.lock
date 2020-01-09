@@ -44,6 +44,10 @@ argparse@^1.0.7:
   dependencies:
     sprintf-js "~1.0.2"
 
+array-flatten@^3.0.0:
+  version "3.0.0"
+  resolved "https://registry.npm.taobao.org/array-flatten/download/array-flatten-3.0.0.tgz?cache=0&sync_timestamp=1574313315299&other_urls=https%3A%2F%2Fregistry.npm.taobao.org%2Farray-flatten%2Fdownload%2Farray-flatten-3.0.0.tgz#6428ca2ee52c7b823192ec600fa3ed2f157cd541"
+
 arraybuffer.slice@~0.0.7:
   version "0.0.7"
   resolved "https://registry.npm.taobao.org/arraybuffer.slice/download/arraybuffer.slice-0.0.7.tgz#3bbc4275dd584cc1b10809b89d4e8b63a69e7675"

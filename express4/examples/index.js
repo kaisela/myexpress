@@ -60,4 +60,15 @@ app.post('/name/:name', function (req, res) {
 app.get('/get', function (req, res) {
   res.end(JSON.stringify(req.query))
 })
+
+let router = express.Router({mergeParams: true})
+router.get('/getname/:like', function (req, res, next) {
+  res.end(JSON.stringify(req.params))
+})
+app.use('/:userId', router)
+let subApp = express()
+subApp.get('/getuser', function (req, res, next) {
+  res.end(JSON.stringify(req.params))
+})
+app.use('/sub/:id', subApp)
 exports = module.exports = app

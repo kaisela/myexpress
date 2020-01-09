@@ -18,6 +18,7 @@ function Layer(path, options, fn) {
   this.params = undefined
   this.path = undefined
   this.regexp = pathRegexp(path, this.keys = [], opts) // path: /user/:id ,keys:[{name: id, , prefix: '/', ...}]
+  this.regexp.fast_slash = path === '/' && opts.end === false
 }
 
 Layer.prototype.handle_request = function handle(req, res, next) {
@@ -54,6 +55,11 @@ Layer.prototype.handle_error = function handle_error(err, req, res, next) {
 Layer.prototype.match = function match(path) {
   let match
   if (path) {
+    if (this.regexp.fast_slash) {
+      this.params = {}
+      this.path = ''
+      return true
+    }
     match = this
       .regexp
       .exec(path)

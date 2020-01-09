@@ -45,7 +45,7 @@ describe('服务器测试', () => {
   })
 
   // 测试get: /get 带query
-  it('GET /get', (done) => {
+  it('GET /get?test=once', (done) => {
     request
       .get('/get?test=once')
       .expect(200)
@@ -120,4 +120,32 @@ describe('服务器测试', () => {
       })
   }) */
 
+  // 4:新增 测试get: /:userId/getname/:like
+  it('GET  /:userId/getname/:like', (done) => {
+    request
+      .get('/12/getname/ll')
+      .expect(200)
+      .end((err, res) => {
+        if (err) 
+          return done(err)
+        let params = JSON.parse(res.text)
+        assert.equal(params.userId, '12', 'res.text must has prototype userId and the value must be 12') // 经过use方法处理后的test为once+ use = once use
+        assert.equal(params.like, 'll', 'res.text must has prototype like and the value must be ll')
+        done()
+      })
+  })
+
+  // 4:新增 测试get: /:userId/getname/:like
+  it('GET /sub/:id/getuser', (done) => {
+    request
+      .get('/sub/13/getuser')
+      .expect(200)
+      .end((err, res) => {
+        if (err) 
+          return done(err)
+        let params = JSON.parse(res.text)
+        assert.equal(params.id, '16', 'res.text must has prototype id and the value must be 13')
+        done()
+      })
+  })
 })

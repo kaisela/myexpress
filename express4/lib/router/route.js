@@ -6,11 +6,11 @@
 const debug = require('debug')('express:router:route')
 const Layer = require('./layer')
 let methods = require('http').METHODS
+const flatten = require('array-flatten').flatten
 
-module.exports = Route
-
+const slice = Array.prototype.slice
 const toString = Object.prototype.toString;
-
+module.exports = Route
 /**
  * 采用设计模式中的工厂模式实现
  */
@@ -27,7 +27,7 @@ methods.forEach((method) => {
   method = method.toLowerCase()
 
   Route.prototype[method] = function () {
-    let handles = arguments
+    let handles = flatten(slice.call(arguments))
 
     for (let i = 0; i < handles.length; i++) {
       let handle = handles[i]

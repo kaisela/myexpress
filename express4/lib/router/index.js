@@ -6,7 +6,7 @@ const Layer = require('./layer')
 let methods = require('http').METHODS
 const parseUrl = require('parseurl')
 const mixin = require('merge-descriptors')
-
+const flatten = require('array-flatten').flatten
 // 3:新增，用于获取对象类型
 const objectRegExp = /^\[object (\S+)\]$/
 const slice = Array.prototype.slice
@@ -53,15 +53,40 @@ proto.handle = function handle(req, res, out) {
   debug('dispatching %s %s', req.method, req.url)
   let idx = 0
   let stack = self.stack
-  let url = req.url
   // 3:修改 对req调用handle时的初始值进行保存，返回处理函数，以便随时恢复初始值
   let done = restore(out, req, 'baseUrl', 'next', 'params')
   let paramcalled = {}
+  // 4:新增 用于存放url中和中间件中的path相匹配的部分
+  let removed = ''
+  // 4:新增 在移除中间件部分之后，是否给url加过 /
+  let slashAdded = false
+  // 4:新增 如果是子路由，或者子app 会存在父app的params
+  let parentPrarms = req.params
+  // 4:新增 如果是子路由，或者子app url 存于baseUrl中
+  let parentUrl = req.baseUrl || ''
+  req.next = next
+
+  req.baseUrl = parentUrl
+  req.originalUrl = req.originalUrl || req.url
   next() //第一次调用next
   function next(err) {
     let layerError = err === 'route'
       ? null
       : err
+    // 4:新增 如果添加过 / 则移除
+    if (slashAdded) {
+      req.url = req
+        .url
+        .substr(1)
+      slashAdded = false
+    }
+    // 4:新增 如果移除过中间件匹配到的部分，则还原
+    if (removed.length !== 0) {
+      req.baseUrl = parentUrl
+      req.url = removed + req.url
+      removed = ''
+    }
+
     if (layerError === 'router') { //如果错误存在，再当前任务结束前调用最终处理函数
       setImmediate(done, null)
       return
@@ -109,7 +134,10 @@ proto.handle = function handle(req, res, out) {
     if (match !== true) { // 循环完成没有匹配的路由，调用最终处理函数
       return done(layerError)
     }
-    req.params = Object.assign({}, layer.params) // 将解析的‘/get/:id’ 中的id剥离出来
+    req.params = mixin(parentPrarms || {}, layer.params) // 将解析的‘/get/:id’ 中的id剥离出来
+    // 4:新增
+    let layerPath = layer.path
+
     // 3:新增，主要是处理app.param
     self.process_params(layer, paramcalled, req, res, function (err) {
       if (err) {
@@ -120,7 +148,7 @@ proto.handle = function handle(req, res, out) {
         return layer.handle_request(req, res, next)
       }
       // 3:新增，加入handle_error处理
-      trim_prefix(layer, layerError, '', path)
+      trim_prefix(layer, layerError, layerPath, path)
     })
   }
 
@@ -129,6 +157,18 @@ proto.handle = function handle(req, res, out) {
       let c = path[layerPath.length]
       if (c && c !== '/' && c !== '.') 
         return next(layerError)
+        // 4:新增 移除中间件中带的path，在父子app中，剥离出子app需要匹配的url 通过req带入子app的handle中
+      removed = layerPath
+      req.url = req
+        .url
+        .substr(removed.length)
+      if (req.url[0] !== '/') {
+        req.url = '/' + req.url
+        slashAdded = true
+      }
+      req.baseUrl = parentUrl + (removed[removed.length - 1] === '/'
+        ? removed.substr(0, removed.length - 1)
+        : removed)
     }
     if (layerError) {
       layer.handle_error(layerError, req, res, next)
@@ -284,7 +324,7 @@ proto.use = function use(fn) {
     }
   }
 
-  let callbacks = slice.call(arguments, offset)
+  let callbacks = flatten(slice.call(arguments, offset))
   if (callbacks.length === 0) {
     throw new TypeError('Router.use() requires a middleware function')
   }
@@ -347,3 +387,13 @@ function restore(fn, obj) {
   }
 
 }
+// 4:新增 增加router.methods对外接口
+methods
+  .forEach(function (method) {
+    method = method.toLowerCase()
+    proto[method] = function (path) {
+      let route = this.route(path)
+      route[method].apply(route, slice.call(arguments, 1))
+      return this
+    }
+  })
