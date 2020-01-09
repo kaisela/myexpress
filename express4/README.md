@@ -1,16 +1,17 @@
 
 ## 回顾
-上一次的迭代中，主要是实现了简化版的router，并对/get/:id 式的路由进行解析。同时实现app.Methods相应的接口
+上次迭代主要是实现了app.param，app.use，以及req.query中参数的提取工作。内容较多，篇幅也较长。
 ## 实现目标
-本次迭代主要是实现了app.param，app.use，以及req.query中参数的提取工作。其实在本次迭代中app.param和query足以形成一个迭代，再加上app.use内容就比较多，不过我还是将它们放在一个迭代中，还请读者多费些时间去理解。因为理解到这一层了，express的真面目已经揭开一大半了
+本次主要是完善router，实现错误处理中间件 和use更多用法实现。其实在上一次迭代的代码中已经完成了错误中间件的逻辑，但是由于上次迭代的篇幅较长，所以就放到这次的迭代中讲诉。对use则是加上了use子模块和router模块的实现。
 
 ## 项目结构
 ```javascript
-express3
+express4
   |
   |-- lib
-  |    |-- middleware // 新增 中间件文件夹
-  |    |    |-- query.js // 新增 实现req.query提取的中间件
+  |    |-- middleware // 中间件文件夹
+  |    |    |-- query.js // 实现req.query提取的中间件
+  |    |    |-- init.js // 新增 每次请求初始之时对app，req，res进行赋值关联
   |
   |    |-- router // 实现简化板的router
   |    |    |-- index.js // 实现路由的遍历等功能
@@ -31,123 +32,35 @@ express3
   |-- package.json // node配置文件
 
 ```
-## 重要概念引入
-### 中间件
-在express中，中间件其实是一个介于web请求来临后到调用处理函数前整个流程体系中间调用的组件。其本质是一个函数，内部可以访问修改请求和响应对象，并调整接下来的处理流程。
-
-express官方给出的解释如下：
->Express 是一个自身功能极简，完全是由路由和中间件构成一个的 web 开发框架：从本质上来说，一个 Express 应用就是在调用各种中间件。
->
-><i>中间件（Middleware)</i> 是一个函数，它可以访问请求对象（[request object](http://www.expressjs.com.cn/4x/api.html#req) (<span style='color:#e83e8c'>req</span>)）, 响应对象（[response object](http://www.expressjs.com.cn/4x/api.html#res) (<span style='color:#e83e8c'>res</span>)）, 和 web 应用中处于请求-响应循环流程中的中间件，一般被命名为 next 的变量。
->
->中间件的功能包括：
->
->- 执行任何代码。
->- 修改请求和响应对象。
->- 终结请求-响应循环。
->- 调用堆栈中的下一个中间件。
->
->如果当前中间件没有终结请求-响应循环，则必须调用 <span style='color:#e83e8c'>next() </span>方法将控制权交给下一个中间件，否则请求就会挂起。
->
->Express 应用可使用如下几种中间件：
->
->- [应用及中间件](http://www.expressjs.com.cn/guide/using-middleware.html#middleware.application)
->- [路由及中间件](http://www.expressjs.com.cn/guide/using-middleware.html#middleware.router)
->- [错误处理中间件](http://www.expressjs.com.cn/guide/using-middleware.html#middleware.error-handling)
->- [内置中间件](http://www.expressjs.com.cn/guide/using-middleware.html#middleware.built-in)
->- [第三方中间件](http://www.expressjs.com.cn/guide/using-middleware.html#middleware.third-party)
->
->使用可选则挂载路径，可在应用级别或路由级别装载中间件。另外，你还可以同时装在一系列中间件函数，从而在一个挂载点上创建一个子中间件栈。
-
-所以对于迭代二来说Router和Route类中的<span style='color:#e83e8c'>this.stack</span>属性内部的每个handle都是一个中间件，根据使用接口不同区别了**应用级中间件**和**路由级中间件**，而四个参数的处理函数就是**错误处理中间件**，对于**内置中间件**我们暂时还未涉及，而app.use接口将要实现的就是嵌入**第三方中间件**
-
-在express中的中间件其实和java中面相切面编程中的拦截器的作用基本一致。可以在某一类接口调用之前，使用中间件做统一处理。比如：app.param 也是一种中间件，只是它针对的只是对参数处理。而use和router都是针对请求路径来处理。
-
 ## 问题分析
-本次迭代主要是实现了app.param，app.use，以及req.query中参数的提取工作
+本次迭代主要是将router作为中间件暴露给用户，并且可以作为app.use的中间件使用。app本身也是中间件的一种，也可以被app.use使用。以及错误中间件的完善工作
 
-### app.use的官方api
+### app.use 使用app 和 router作为中间件
 ```javascript
-app.use(function(req, res, next) { // 将会拦截所有请求
-  res.send('Hello World');
-});
-app.use('/abcd', function (req, res, next) { // 将会拦截路径为 /abcd 的请求
+// 路由作为中间件
+var router = express.Router();
+router.get('/', function (req, res, next) {
   next();
 });
-app.use('/abc?d', function (req, res, next) { // 将会拦截路径为 /abcd 和 /abd 的请求
-  next();
-});
-app.use(/\/abc|\/xyz/, function (req, res, next) { // 将会拦截路径为 /abc 和 /xyz 的请求
-  next();
-});
-```
-以上为app.use的一些用法示例，由于use方法和router的参数很相似，只是少了method这个变量。所以在express的源码中，use方法注册的中间件的数据结构将使用router的第一层（Router）中的stack存储，只是use注册的Layer中少了route对象
+app.use(router)
 
-### app.param的官方api
+// app作为中间件
+var subApp = express();
+subApp.get('/', function (req, res, next) {
+  next();
+});
+app.use(subApp)
+```
+以上是在官方文档上，router和子app分别作为中间件在app中的使用示例。其实在application和router的实现中，最重要的就是handle函数，整个程序的执行入口就在这两个函数当中，而这两个函数的参数就是req，res，next，本身就是一个中间件。因此在app.use实现过程中，做了一些小小的包装处理。
+
+### 错误中间件
 ```javascript
-app.param('id', function (req, res, next, id) { // 当注册路由为 .../:id/...形式时会被此中间件拦截
-  console.log('CALLED ONLY ONCE');
-  next();
-});
-
-app.param(['id', 'page'], function (req, res, next, value) { // 拦截含有id 或者 page参数的路由请求
-  console.log('CALLED ONLY ONCE with', value);
-  next();
-});
-
-// 以上两种方式的另一种写法，二者选其一 ，文中和测试用例中我们以上一种为例
-app.param(function(param, option) {
-  return function (req, res, next, val) {
-    if (val == option) {
-      next();
-    }
-    else {
-      next('route');
-    }
-  }
-});
-
-// using the customized app.param()
-app.param('id', 1337);
-
+app.use(function (err, req, res, next) {
+  console.error(err.stack)
+  res.status(500).send('Something broke!')
+})
 ```
-param的方法的结构就较为简单，分为参数param和callback两种，其二者的关系为一对多的关系，在express的源码中实现是放在Router类中，数据结构由params对象和_params数组两种方式存储，第一种书写方式只需要用到params对象，第二种书写方式则是后面所有的param注册，都是使用前面return的中间件函数。此文中对第二种书写方式不做详解，请自行看源码理解
-
-Router中params的结构为{param:[fn,fn...]}
-
-### req.query
-
-主要是对请求路径中的query部分进行解析，主要使用的方法为parseurl，querystring.parse。url转换后的结构示例如下
-
-url.parse (http://user:pass@host.com:8080/users/user.php?userName=Lulingniu&age=40&sex=male#namel1);
-
-属性名 |值
-
----|---
-
-href | http://user:pass@host.com:8080/users/user.php?userName=Lulingniu&age=40&sex=male#namel1
-
-protocol | http
-
-slashes | true
-
-host | host.com:8080
-
-auth|user:pass
-
-hostname|host.com
-
-port|8080
-
-pathname|/users/user.php
-
-search|?userName=Lulingniu&age=40&sex=male
-
-path|/users/user.php?userName=Lulingniu&age=40&sex=male
-
-query|userName=Lulingniu&age=40&sex=male
-
-hash|#namel
+错误处理是指如何表示同步和异步发生的捕获和处理错误。Express附带了一个默认的错误处理程序-->[finalhandler](https://www.npmjs.com/package/finalhandler)。如果您将错误传递给next()，并且没有在自定义错误处理程序中处理它，那么它将由内置的错误处理程序处理;错误将通过堆栈跟踪写入客户端。
 
 ## 数据结构
 
@@ -172,12 +85,12 @@ hash|#namel
                        ----- --------------
                             router
 ```
-对于query的实现，其实就是在所有路由注册前面加上了一个处理query的中间件，和中间件的结构图一样，只是这里的中间件是一个特定的函数
+对于子app作为中间件的数据结构并未发生变化，只是对callback函数做了处理。而对于router作为中间件，callback就是router的handle函数。
 ## 代码解析
-此次迭代中新增的代码比较多，也比较零碎，因此我在文件的注释中前面加了一个“迭代编号:新增”的字样，来表示此段代码是在此迭代中新增的。
+和上次迭代一样，在文件的注释中前面加了一个“迭代编号:新增”的字样，来表示此段代码是在此迭代中新增的。
 
 ### app.use
-application.js中新增use接口，主要是调用router中的use方法
+application.js中的use做了修改，主要是对子app的回调做个简单处理。引入[flatten](https://www.npmjs.com/package/flatten)处理一下use的参数，这个在其他的一些类似参数的接口中也加入了处理
 ```javascript
 /**
  * 3:新增 暴露给用户注册中间件的结构，主要调用router的use方法
@@ -198,7 +111,8 @@ app.use = function use(fn) {
       path = fn
     }
   }
-  let fns = slice.call(arguments, offset)
+  // 4:新增 对传入的参数进行处理，是参数可以传入数组
+  let fns = flatten(slice.call(arguments, offset))
   if (fns.length === 0) {
     throw new TypeError('app.use() require a middlewaare function')
   }
@@ -206,117 +120,125 @@ app.use = function use(fn) {
   this.lazyrouter()
   let router = this._router
   fns.forEach(function (fn) {
-    router.use(path, fn)
+    // 4:修改 通常use里面是一个express对象，或者router对象时会包含handle和set，不包含为普通中间件
+    if (!fn || !fn.handle || !fn.set) {
+      return router.use(path, fn)
+    }
+    // 4:新增 此时的fn为express或router对象，将当前express对象关联到fn
+    fn.parent = this
+
+    router.use(path, function mounted_app(req, res, next) {
+      let orig = req.app
+      // 4:新增 在中间件的回调函数中调用fn的handle
+      fn.handle(req, res, function (err) {
+        setPrototypeOf(req, orig.request)
+        setPrototypeOf(res, orig.response)
+        next(err)
+      })
+    })
+    // 4:新增 触发fn挂载完成事件
+    fn.emit('mount', this)
+  }, this)
+}
+```
+在上面的代码中有req.app的引用。这次在每次请求时出了原来的query中间件，还加入了一个init中间件，主要是对app，req，res进行赋值关联
+```javascript
+const setPrototypeOf = require('setprototypeof')
+
+exports.init = function (app) {
+  return function expressInit(req, res, next) {
+    req.res = res
+    res.req = req
+    req.next = next
+    setPrototypeOf(req, app.request)
+    setPrototypeOf(res, app.response)
+
+    res.locals = res.locals || Object.create(null)
+    next()
+  }
+}
+```
+app.request是在程序初始化时加入的，并将app挂在在app.request上面。对应文件为express.js
+```javascript
+function createApplication() {
+  ...
+  // 4:新增 讲app和新创建的req相互关联
+  app.request = Object.create(req, {
+    app: {
+      configurable: true,
+      enumerable: true,
+      writable: true,
+      value: app
+    }
   })
+  // 4:新增 讲app和新创建的res相互关联
+  app.response = Object.create(res, {
+    app: {
+      configurable: true,
+      enumerable: true,
+      writable: true,
+      value: app
+    }
+  })
+  app.init()
+  return app
 }
 ```
-router中新增use方法，主要是完成对中间件的注册，在handle中遍历
-```javascript
-/**
- * 3:新增 主要用于注册路由相关的中间件，此迭代中，在注册query中间件中使用到
- * @param {*} fn
- */
-proto.use = function use(fn) {
-  let path = '/'
-  let offset = 0
-  // 为app.use 接口准备，第一个参数可能时路径的正则表达式
-  if (typeof fn !== 'function') {
-    let arg = fn
-    while (Array.isArray(arg) && arg.length != 0) {
-      arg = arg[0]
-    }
-    if (typeof arg !== 'function') {
-      offset = 1
-      path = arg
-    }
-  }
-
-  let callbacks = slice.call(arguments, offset)
-  if (callbacks.length === 0) {
-    throw new TypeError('Router.use() requires a middleware function')
-  }
-
-  // 将中间件加入到stack栈中，方便handle函数遍历中执行
-  for (let i = 0; i < callbacks.length; i++) {
-    let fn = callbacks[i]
-    if (typeof fn !== 'function') {
-      throw new TypeError('Router.use() requires a middleware function but not a ' + gettype(fn))
-    }
-    let layer = new Layer(path, {
-      strict: false,
-      end: false
-    }, fn)
-    layer.route = undefined
-    this
-      .stack
-      .push(layer)
-  }
-}
-```
-
-application.js中新增param接口，主要是调用router中的param方法
-```javascript
-/**
- * 3:新增 实现app的param接口
- * @param {*} name 参数名称 可以是数组 或者 字符串
- * @param {*} fn 需要处理的中间件
- */
-app.param = function param(name, fn) {
-  this.lazyrouter()
-  // 如果name是数组时，分割调用自身
-  if (Array.isArray(name)) {
-    for (let i = 0; i < name.length; i++) {
-      this.param(name[i], fn)
-    }
-    return this
-  }
-  this
-    ._router
-    .param(name, fn)
-  return this
-}
-```
-router中新增param方法，主要是完成对param中间件的注册，在handle中处理
-```javascript
-/**
- * 3:新增 对传过来的参数进行拦截，将参数拦截相关存入到params中，在handle中进行分解执行
- */
-proto.param = function param(name, fn) {
-  if (typeof name === 'function') {
-    this
-      ._params
-      .push(name)
-    return
-  }
-  if (name[0] === ':') {
-    name = name.substr(1)
-  }
-  let params = this._params
-  let len = this._params.length
-  let ret
-  for (let i = 0; i < len; i++) {
-    if (ret = params[i](name, fn)) {
-      fn = ret
-    }
-  }
-  (this.params[name] = this.params[name] || []).push(fn)
-}
-```
-
-router中的handle方法中新增对use中间件的遍历逻辑，主要是通过是否有route来判断。新增process_params方法对params对象的处理，主要是和layer.keys进行比较，匹配到的时候逐个执行param所对应的callbacks。在process_params中使用param递归遍历keys，使用paramCallback的递归对param对应的callbacks进行遍历。这里就不具体贴代码了，大家自行移步git看代码
+重点的实现在router的handle方法，主要是是将请求的链接进行分割。比如path:/sub/:id/getuser 实际是子app的基本路径为:/sub 而在子app中有注册get：/:id/getuser路由，两者连起来形成path：/sub/:id/getuser。所以在router的handle中，将url分割称两部分：/sub , /12/getuser
 ```javascript
 /**
  * 遍历stack数组，并处理函数, 将res req 传给route
  */
 
 proto.handle = function handle(req, res, out) {
-  ...
+  let self = this
+  debug('dispatching %s %s', req.method, req.url)
+  let idx = 0
+  let stack = self.stack
+  // 3:修改 对req调用handle时的初始值进行保存，返回处理函数，以便随时恢复初始值
+  let done = restore(out, req, 'baseUrl', 'next', 'params')
+  let paramcalled = {}
+  // 4:新增 用于存放url中和中间件中的path相匹配的部分
+  let removed = ''
+  // 4:新增 在移除中间件部分之后，是否给url加过 /
+  let slashAdded = false
+  // 4:新增 如果是子路由，或者子app 会存在父app的params
+  let parentPrarms = req.params
+  // 4:新增 如果是子路由，或者子app url 存于baseUrl中
+  let parentUrl = req.baseUrl || ''
+  req.next = next
+
+  req.baseUrl = parentUrl
+  req.originalUrl = req.originalUrl || req.url
   next() //第一次调用next
   function next(err) {
-    ...
-    // 3:修改 对req调用handle时的初始值进行保存，返回处理函数，以便随时恢复初始值
-      let done = restore(out, req, 'baseUrl', 'next', 'params')
-    ...
+    let layerError = err === 'route'
+      ? null
+      : err
+    // 4:新增 如果添加过 / 则移除
+    if (slashAdded) {
+      req.url = req
+        .url
+        .substr(1)
+      slashAdded = false
+    }
+    // 4:新增 如果移除过中间件匹配到的部分，则还原
+    if (removed.length !== 0) {
+      req.baseUrl = parentUrl
+      req.url = removed + req.url
+      removed = ''
+    }
+
+    if (layerError === 'router') { //如果错误存在，再当前任务结束前调用最终处理函数
+      setImmediate(done, null)
+      return
+    }
+
+    if (idx >= stack.length) { // 遍历完成之后调用最终处理函数
+      setImmediate(done, layerError)
+      return
+    }
+
     // 3: 新增path ，用于获取除query之外的path
     let path = getPathname(req)
     if (!path) {
@@ -326,37 +248,20 @@ proto.handle = function handle(req, res, out) {
     let match
     let route
     while (match !== true && idx < stack.length) { //从数组中找到匹配的路由
-      layer = stack[idx++]
-      match = matchLayer(layer, path)
-      route = layer.route
-      if (typeof match !== 'boolean') {
-        layerError = layerError || match
-      }
-
-      if (match !== true) {
-        continue
-      }
-      // 3:新增，原逻辑中不可能存在route没有的情况，在3中加入中间件，其route为undefined
-      if (!route) {
-        continue
-      }
-    ...
+      ...
     }
     if (match !== true) { // 循环完成没有匹配的路由，调用最终处理函数
       return done(layerError)
     }
-    req.params = Object.assign({}, layer.params) // 将解析的‘/get/:id’ 中的id剥离出来
-    // 3:新增，主要是处理params
+    req.params = mixin(parentPrarms || {}, layer.params) // 将解析的‘/get/:id’ 中的id剥离出来
+    // 4:新增
+    let layerPath = layer.path
+
+    // 3:新增，主要是处理app.param
     self.process_params(layer, paramcalled, req, res, function (err) {
-      if (err) {
-        return next(layerError || err)
-      }
-      if (route) {
-        //调用route的dispatch方法，dispatch完成之后在此调用next，进行下一次循环
-        return layer.handle_request(req, res, next)
-      }
+      ...
       // 3:新增，加入handle_error处理
-      trim_prefix(layer, layerError, '', path)
+      trim_prefix(layer, layerError, layerPath, path)
     })
   }
 
@@ -365,6 +270,18 @@ proto.handle = function handle(req, res, out) {
       let c = path[layerPath.length]
       if (c && c !== '/' && c !== '.')
         return next(layerError)
+        // 4:新增 移除中间件中带的path，在父子app中，剥离出子app需要匹配的url 通过req带入子app的handle中
+      removed = layerPath
+      req.url = req
+        .url
+        .substr(removed.length)
+      if (req.url[0] !== '/') {
+        req.url = '/' + req.url
+        slashAdded = true
+      }
+      req.baseUrl = parentUrl + (removed[removed.length - 1] === '/'
+        ? removed.substr(0, removed.length - 1)
+        : removed)
     }
     if (layerError) {
       layer.handle_error(layerError, req, res, next)
@@ -374,187 +291,134 @@ proto.handle = function handle(req, res, out) {
   }
 
 }
+
 ```
-restore方法为一个高阶函数，主要作用是对一个对象的初始值进行存储，在返回的函数中以便随时恢复
+对于错误中间件的处理，主要是放在layer.js中，当出现错误的时候，将error传给next，如果layerError存在就走错误逻辑
 ```javascript
-/**
- * 3:新增 对obj对象的一些属性进行恢复出厂设置
- * @param {*} fn 恢复值之后需要调用的函数
- * @param {*} obj 需要恢复值的对象
- * @param {*}  augments[i+2] obj需要恢复的属性
- */
-function restore(fn, obj) {
-  let props = new Array(arguments.length - 2)
-  let vals = new Array(arguments.length - 2)
-
-  // 保存函数调用时，obj对应属性的值
-  for (let i = 0; i < props.length; i++) {
-    props[i] = arguments[i + 2]
-    vals[i] = obj[props[i]]
-  }
-
-  return function () {
-    // 调用函数时，对obj属性值进行恢复
-    for (let i = 0; i < props.length; i++) {
-      obj[props[i]] = vals[i]
+// router
+proto.handle = function handle(req, res, out) {
+ ...
+  next() //第一次调用next
+  function next(err) {
+    let layerError = err === 'route'
+      ? null
+      : err
+    ...
+    if (layerError === 'router') { //如果错误存在，再当前任务结束前调用最终处理函数
+      setImmediate(done, null)
+      return
     }
-    fn.apply(this, arguments);
-  }
 
-}
-```
-还有一个是query中间件介绍，在utils中通过compileQueryParser来确定querysting调用的是那个方法，默认值是在qs和querystring中做选择，当然你也可以自己写处理方法。在路由初始化的时候进行中间件的注册
-
-```javascript
-
-/**
- * 对路由实现装载，实例化
- */
-app.lazyrouter = function () {
-  if (!this._router) {
-    this._router = new Router()
-    // 3:新增 注册处理query的中间件
-    this
-      ._router
-      .use(query(this.get('query parser fn')))
-  }
-}
-
-/**
- * 3:新增 处理req.url query部分的中间件
- */
-let merge = require('utils-merge')
-let parseUrl = require('parseurl')
-let qs = require('qs')
-
-module.exports = function query(options) {
-  let opts = merge({}, options)
-  let queryparse = qs.parse
-
-  if (typeof options === 'function') {
-    queryparse = options
-    opts = undefined
-  }
-
-  if (opts !== undefined && opts.allowPrototypes === undefined) {
-    opts.allowPrototypes = true
-  }
-
-  return function query(req, res, next) {
-    if (!req.query) {
-      let val = parseUrl(req).query
-      req.query = queryparse(val, opts)
+    if (idx >= stack.length) { // 遍历完成之后调用最终处理函数
+      setImmediate(done, layerError)
+      return
     }
-    next()
+
+    // 3: 新增path ，用于获取除query之外的path
+    let path = getPathname(req)
+    if (!path) {
+      return done(layerError)
+    }
+   ...
+    if (match !== true) { // 循环完成没有匹配的路由，调用最终处理函数
+      return done(layerError)
+    }
+    req.params = mixin(parentPrarms || {}, layer.params) // 将解析的‘/get/:id’ 中的id剥离出来
+    // 4:新增
+    let layerPath = layer.path
+
+    // 3:新增，主要是处理app.param
+    self.process_params(layer, paramcalled, req, res, function (err) {
+      if (err) {
+        return next(layerError || err)
+      }
+      if (route) {
+        //调用route的dispatch方法，dispatch完成之后在此调用next，进行下一次循环
+        return layer.handle_request(req, res, next)
+      }
+      // 3:新增，加入handle_error处理
+      trim_prefix(layer, layerError, layerPath, path)
+    })
+  }
+
+  function trim_prefix(layer, layerError, layerPath, path) {
+    if (layerPath.length !== 0) {
+      let c = path[layerPath.length]
+      if (c && c !== '/' && c !== '.')
+        return next(layerError)
+    ...
+    }
+    if (layerError) {
+      layer.handle_error(layerError, req, res, next)
+    } else {
+      layer.handle_request(req, res, next)
+    }
+  }
+}
+
+// layer
+/**
+ * 3:新增 加入handle_error的处理
+ * @param {*} err 错误信息
+ * @param {*} req
+ * @param {*} res
+ * @param {*} next
+ */
+Layer.prototype.handle_error = function handle_error(err, req, res, next) {
+  let fn = this.handle
+  if (fn.length !== 4) {
+    return next(err)
+  }
+  try {
+    fn(err, req, res, next)
+  } catch (err) {
+    next(err)
   }
 }
 ```
 
 exammple/index.js 在入口文件中加入了一些新的测试用例
 ```javascript
-// 3:新增 输出传入的id，和name时拦截处理参数
-app.param([
-  'id', 'name'
-], function (req, res, next, val, name) {
-  if (name == 'id') {
-    req.params.id = ((val - 0) + 3) + ''
-  }
-  if (name == 'name') {
-    req.params[name] = req.params[name] + ' param'
-  }
-  next()
-})
-// 3:新增 当路径为/get 时拦截处理query
-app.use('/get', function (req, res, next) {
-  for (key in req.query) {
-    req.query[key] = req.query[key] + ' use'
-  }
-  next()
-})
 
-// 测试param处理id ,name
-app.post('/user/:id/:name', function (req, res) {
+let router = express.Router({mergeParams: true})
+router.get('/getname/:like', function (req, res, next) {
   res.end(JSON.stringify(req.params))
 })
-
-// 测试param处理id
-app.post('/user/:id', function (req, res) {
+app.use('/:userId', router)
+let subApp = express()
+subApp.get('/getuser', function (req, res, next) {
   res.end(JSON.stringify(req.params))
 })
-
-// 测试param处理name
-app.post('/name/:name', function (req, res) {
-  res.end(JSON.stringify(req.params))
-})
-
-app.get('/get', function (req, res) {
-  res.end(JSON.stringify(req.query))
-})
-// 输出传入的id
-app.get('/get/:id', function (req, res) {
-  res.end(`{"id":${res.params.id}}`)
-})
+app.use('/sub/:id', subApp)
 ```
 test/index.js 测试exapmles中的代码，验证是否按照地址的不同，进了不同的回调函数
 
 ```javascript
-
-  // 测试get: /get 带query
-  it('GET /get', (done) => {
+// 4:新增 测试get: /:userId/getname/:like
+  it('GET  /:userId/getname/:like', (done) => {
     request
-      .get('/get?test=once')
+      .get('/12/getname/ll')
       .expect(200)
       .end((err, res) => {
         if (err)
           return done(err)
         let params = JSON.parse(res.text)
-        assert.equal(params.test, 'once use', 'res.text must has prototype test and the value must be once use') // 经过use方法处理后的test为once+ use = once use
+        assert.equal(params.userId, '12', 'res.text must has prototype userId and the value must be 12') // 经过use方法处理后的test为once+ use = once use
+        assert.equal(params.like, 'll', 'res.text must has prototype like and the value must be ll')
         done()
       })
   })
 
-  // 如果走的不是examples中的post：/user/:id/:name 测试不通过
-  it('POST /user/12/kaisela', (done) => {
+  // 4:新增 测试get: /:userId/getname/:like
+  it('GET /sub/:id/getuser', (done) => {
     request
-      .post('/user/12/kaisela')
+      .get('/sub/13/getuser')
       .expect(200)
       .end((err, res) => {
         if (err)
           return done(err)
         let params = JSON.parse(res.text)
-        assert.equal(params.id, '15', 'id must be 15') // 经过param方法处理后的id为12+3 = 15
-        assert.equal(params.name, 'kaisela param', 'name must be kaisela param')
-        // 经过param方法处理后的id为kaisela+ param = kaisela param
-        done()
-      })
-  })
-
-  // 如果走的不是examples中的post：/user/:id测试不通过
-  it('POST /user/17', (done) => {
-    request
-      .post('/user/17')
-      .expect(200)
-      .end((err, res) => {
-        if (err)
-          return done(err)
-        let params = JSON.parse(res.text)
-        // 经过param方法处理后的id为17+3 = 20
-        assert.equal(params.id, '20', 'id must be 20')
-        done()
-      })
-  })
-
-  // 如果走的不是examples中的post：/name/:name测试不通过
-  it('POST /name/ke', (done) => {
-    request
-      .post('/name/ke')
-      .expect(200)
-      .end((err, res) => {
-        if (err)
-          return done(err)
-        let params = JSON.parse(res.text)
-        // 经过param方法处理后的id为ke+ param = ke param
-        assert.equal(params.name, 'ke param', 'name must be ke param')
+        assert.equal(params.id, '16', 'res.text must has prototype id and the value must be 13')
         done()
       })
   })
@@ -564,9 +428,8 @@ test/index.js 测试exapmles中的代码，验证是否按照地址的不同，�
 test测试结果如下：
 
 
-![](https://user-gold-cdn.xitu.io/2019/12/26/16f403740aa94a97?w=734&h=412&f=png&s=36079)
+![](https://user-gold-cdn.xitu.io/2020/1/9/16f89aaa954d3e99?w=1014&h=534&f=png&s=51383)
+## 回顾整体结构
 
 ## 写在最后
-到此为止，express的两个比较重要的功能算是基本完成，虽然还有很多细节要完善。对于use方法可以路由嵌套的功能也许还要花一个篇幅讲解，看后面的时间吧。还有request，response的封装，模版引擎以及错误处理中间件。尤其是模版引擎，目前算是一点未引入
-## 下期预告
-完善router，实现错误处理中间件 和use更多用法实现
+这节对应的逻辑相对来说比较简单，主要是对以前的逻辑进行完善处理。让router独立出来，可做中间件。让app亦可独立作为中间件应用于另一个app中。这样就形成了嵌套关系。这次迭代完成之后，算是把express的主要逻辑形成了一个完整的链条。之后的功能可以说是围绕当前的数据结构做存取，整体的数据结构不会发生大的变化。对于express的解读想暂时写到此，如果后面有时间，就写一下模版的渲染和req，res的封装。
