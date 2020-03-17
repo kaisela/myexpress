@@ -1,6 +1,4 @@
-## 灵感
 
-写这个的灵感主要源于github上WangZhechao早期写过的一篇关于express源码的文章，生完baby之后，本准备在其早期的代码上做一次升级解析。不成想居然和原作者想到一处去了，搭好戏台正准备开始干的时候，到原作者博客上一看，已经有升级版了。至此想以自己对express源码的理解，写一个关于express源码的系列，原作者的文章地址：https://github.com/WangZhechao/expross   感谢原作者的贡献
 ## 准备
 
 项目以 mocha + chai + supertest 测试驱动开发，阅读者需要储备的知识有：
